@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "brand:export": "node scripts/export-brand.mjs"
@@ -27,5 +27,10 @@
     "sharp": "^0.35.5",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "@prisma/client@6.4.1": true,
+    "@prisma/engines@6.4.1": true,
+    "prisma@6.4.1": true
   }
 }

@@ -36,6 +36,7 @@ export class LocalStorageEngine implements StorageEngine {
 
   constructor(customUploadDir?: string) {
     this.uploadDir = path.resolve(
+      /*turbopackIgnore: true*/
       customUploadDir ||
         process.env.PRAISE_UPLOAD_DIR ||
         path.join(process.cwd(), "storage", "uploads"),
