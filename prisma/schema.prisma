@@ -1,0 +1,464 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum TestimonialStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum TestimonialType {
+  TEXT
+  VIDEO
+  AUDIO
+}
+
+enum FormFieldType {
+  SHORT_TEXT
+  LONG_TEXT
+  EMAIL
+  URL
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  CHECKBOX
+  STAR_RATING
+  TEXT
+  TEXTAREA
+  RATING
+  SELECT
+  BOOLEAN
+}
+
+enum MediaType {
+  VIDEO
+  AUDIO
+  IMAGE
+}
+
+enum StorageProvider {
+  LOCAL
+  S3
+}
+
+enum WidgetType {
+  WALL_OF_LOVE
+  GRID
+  CAROUSEL
+  QUOTE_CARD
+}
+
+enum WidgetTheme {
+  LIGHT
+  DARK
+  WARM
+  AUTO
+}
+
+enum WidgetEventType {
+  IMPRESSION
+  INTERACTION
+  VIDEO_PLAY
+}
+
+// -----------------------------------------------------------------------------
+// 1. User & Authentication
+// -----------------------------------------------------------------------------
+
+model User {
+  id           String            @id @default(cuid())
+  email        String            @unique
+  passwordHash String
+  name         String
+  avatarUrl    String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  memberships  WorkspaceMember[]
+  sessions     Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// -----------------------------------------------------------------------------
+// 2. Multi-Tenant Workspace & Role-Based Access
+// -----------------------------------------------------------------------------
+
+model Workspace {
+  id             String            @id @default(cuid())
+  name           String
+  slug           String            @unique
+  logoUrl        String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  members        WorkspaceMember[]
+  brands         Brand[]
+  projects       Project[]
+  customers      Customer[]
+  forms          CollectionForm[]
+  testimonials   Testimonial[]
+  mediaAssets    MediaAsset[]
+  consentRecords ConsentRecord[]
+  tags           Tag[]
+  widgets        Widget[]
+  widgetEvents   WidgetEvent[]
+
+  @@index([slug])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// -----------------------------------------------------------------------------
+// 3. Brands & Projects
+// -----------------------------------------------------------------------------
+
+model Brand {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  logoUrl     String?
+  accentColor String?   @default("#7049D8")
+  websiteUrl  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projects    Project[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@map("brands")
+}
+
+model Project {
+  id           String           @id @default(cuid())
+  workspaceId  String
+  brandId      String?
+  name         String
+  slug         String
+  description  String?
+  logoUrl      String?
+  color        String?          @default("#7049D8")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand        Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  forms        CollectionForm[]
+  testimonials Testimonial[]
+  widgets      Widget[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@index([brandId])
+  @@map("projects")
+}
+
+// -----------------------------------------------------------------------------
+// 4. Customers & Respondents
+// -----------------------------------------------------------------------------
+
+model Customer {
+  id           String        @id @default(cuid())
+  workspaceId  String
+  name         String
+  email        String
+  company      String?
+  title        String?
+  avatarUrl    String?
+  socialHandle String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonials Testimonial[]
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId])
+  @@map("customers")
+}
+
+// -----------------------------------------------------------------------------
+// 5. Collection Forms & Form Fields
+// -----------------------------------------------------------------------------
+
+model CollectionForm {
+  id                      String        @id @default(cuid())
+  workspaceId             String
+  projectId               String?
+  title                   String
+  slug                    String
+  description             String?
+  headerPrompt            String
+  thankYouMessage         String?       @default("Thank you for sharing your feedback!")
+  allowVideo              Boolean       @default(true)
+  allowAudio              Boolean       @default(true)
+  allowText               Boolean       @default(true)
+  maxVideoDurationSeconds Int           @default(120)
+
+  // Standard fields configuration
+  collectName             Boolean       @default(true)
+  nameRequired            Boolean       @default(true)
+  collectEmail            Boolean       @default(true)
+  emailRequired           Boolean       @default(true)
+  collectCompany          Boolean       @default(true)
+  companyRequired         Boolean       @default(false)
+  collectJobTitle         Boolean       @default(false)
+  jobTitleRequired        Boolean       @default(false)
+  collectWebsite          Boolean       @default(false)
+  websiteRequired         Boolean       @default(false)
+  collectRating           Boolean       @default(true)
+  ratingRequired          Boolean       @default(false)
+  collectText             Boolean       @default(true)
+  textRequired            Boolean       @default(true)
+  collectAvatar           Boolean       @default(true)
+
+  // Consent configuration
+  collectConsent          Boolean       @default(true)
+  consentRequired         Boolean       @default(true)
+  consentText             String        @default("I grant permission to use my feedback, name, and submitted media for public marketing purposes.")
+
+  // Submission control & Redirect
+  submissionsEnabled      Boolean       @default(true)
+  redirectUrl             String?
+
+  // Appearance & Branding Customization
+  customLogoUrl           String?
+  accentColor             String?       @default("#7049D8")
+  theme                   String?       @default("warm")
+
+  isPublished             Boolean       @default(true)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  workspace               Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                 Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  fields                  FormField[]
+  testimonials            Testimonial[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@index([projectId])
+  @@map("collection_forms")
+}
+
+model FormField {
+  id          String        @id @default(cuid())
+  formId      String
+  label       String
+  description String?
+  placeholder String?
+  type        FormFieldType @default(SHORT_TEXT)
+  isRequired  Boolean       @default(false)
+  orderIndex  Int           @default(0)
+  optionsJson String?       // For SINGLE_CHOICE / MULTIPLE_CHOICE (JSON string array)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  form        CollectionForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId])
+  @@map("form_fields")
+}
+
+// -----------------------------------------------------------------------------
+// 6. Testimonials, Media Assets & Consent Records
+// -----------------------------------------------------------------------------
+
+model Testimonial {
+  id             String            @id @default(cuid())
+  workspaceId    String
+  projectId      String?
+  formId         String?
+  customerId     String?
+  content        String
+  rating         Int?              @default(5)
+  type           TestimonialType   @default(TEXT)
+  status         TestimonialStatus @default(PENDING)
+  isFeatured     Boolean           @default(false)
+  submittedAt    DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project        Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  form           CollectionForm?   @relation(fields: [formId], references: [id], onDelete: SetNull)
+  customer       Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  mediaAssets    MediaAsset[]
+  consentRecords ConsentRecord[]
+  tags           TestimonialTag[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, type])
+  @@index([projectId])
+  @@index([formId])
+  @@index([customerId])
+  @@map("testimonials")
+}
+
+model MediaAsset {
+  id              String          @id @default(cuid())
+  workspaceId     String
+  testimonialId   String?
+  type            MediaType
+  storageProvider StorageProvider @default(LOCAL)
+  url             String
+  localPath       String?
+  s3Key           String?
+  mimeType        String
+  fileSizeBytes   Int?
+  durationSeconds Int?
+  createdAt       DateTime        @default(now())
+
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonial     Testimonial?    @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([testimonialId])
+  @@map("media_assets")
+}
+
+model ConsentRecord {
+  id               String      @id @default(cuid())
+  workspaceId      String
+  testimonialId    String
+  customerName     String
+  customerEmail    String
+  consentText      String
+  ipAddress        String?
+  userAgent        String?
+  isConsentGranted Boolean     @default(true)
+  grantedAt        DateTime    @default(now())
+  revokedAt        DateTime?
+
+  workspace        Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonial      Testimonial @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([testimonialId])
+  @@map("consent_records")
+}
+
+// -----------------------------------------------------------------------------
+// 7. Tags & Categorization
+// -----------------------------------------------------------------------------
+
+model Tag {
+  id           String           @id @default(cuid())
+  workspaceId  String
+  name         String
+  color        String?          @default("#7049D8")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonials TestimonialTag[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("tags")
+}
+
+model TestimonialTag {
+  testimonialId String
+  tagId         String
+  workspaceId   String
+  createdAt     DateTime    @default(now())
+
+  testimonial   Testimonial @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([testimonialId, tagId])
+  @@index([workspaceId])
+  @@index([tagId])
+  @@map("testimonial_tags")
+}
+
+// -----------------------------------------------------------------------------
+// 8. Widgets & Embed Events
+// -----------------------------------------------------------------------------
+
+model Widget {
+  id          String        @id @default(cuid())
+  workspaceId String
+  projectId   String?
+  name        String
+  type        WidgetType    @default(WALL_OF_LOVE)
+  theme       WidgetTheme   @default(WARM)
+  configJson  String?       // JSON stringified configuration (accent colors, cards per row, minRating, etc.)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project     Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  events      WidgetEvent[]
+
+  @@index([workspaceId])
+  @@index([projectId])
+  @@map("widgets")
+}
+
+model WidgetEvent {
+  id             String          @id @default(cuid())
+  workspaceId    String
+  widgetId       String
+  eventType      WidgetEventType @default(IMPRESSION)
+  visitorCountry String?
+  recordedAt     DateTime        @default(now())
+
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  widget         Widget          @relation(fields: [widgetId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([widgetId])
+  @@index([recordedAt])
+  @@map("widget_events")
+}
+

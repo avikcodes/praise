@@ -1,26 +1,202 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ---------------------------------------------------------------------------
+   Design tokens
+   Warm white surfaces, dark charcoal ink, purple accent, soft lavender.
+--------------------------------------------------------------------------- */
+
+@theme {
+  /* Warm neutrals */
+  --color-warm-50: #fcfbf8;
+  --color-warm-100: #f6f4ef;
+  --color-warm-200: #efece5;
+  --color-line: #e7e3da;
+
+  /* Ink (text) */
+  --color-ink-900: #1b1a18;
+  --color-ink-700: #3c3a36;
+  --color-ink-500: #6b675f;
+  --color-ink-400: #7a756c;
+
+  /* Purple accent */
+  --color-brand-50: #f4f1fe;
+  --color-brand-100: #ebe6fd;
+  --color-brand-200: #d9d0fb;
+  --color-brand-300: #b9a6f4;
+  --color-brand-400: #9579ea;
+  --color-brand-500: #7049d8;
+  --color-brand-600: #5d39c4;
+  --color-brand-700: #4a2ca3;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ---------------------------------------------------------------------------
+   Base
+--------------------------------------------------------------------------- */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-warm-50);
+    color: var(--color-ink-900);
+    font-family: var(--font-geist-sans), ui-sans-serif, system-ui,
+      -apple-system, "Segoe UI", sans-serif;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-200);
+    color: var(--color-ink-900);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ---------------------------------------------------------------------------
+   Layout primitives
+--------------------------------------------------------------------------- */
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-5 sm:px-8 lg:px-12;
+  }
+
+  .section {
+    @apply scroll-mt-16 py-16 sm:py-20 lg:py-28;
+  }
+
+  .stack {
+    @apply flex flex-col gap-6;
+  }
+
+  /* Typography */
+  .display {
+    @apply text-4xl leading-[1.06] font-semibold tracking-tight text-balance sm:text-5xl lg:text-6xl;
+  }
+
+  .heading-lg {
+    @apply text-3xl leading-[1.15] font-semibold tracking-tight text-balance sm:text-4xl;
+  }
+
+  .heading-md {
+    @apply text-lg leading-snug font-semibold tracking-tight sm:text-xl;
+  }
+
+  .lead {
+    @apply text-base leading-relaxed text-ink-500 sm:text-lg;
+  }
+
+  .muted {
+    @apply text-sm leading-relaxed text-ink-500;
+  }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap transition-colors duration-150;
+  }
+
+  .btn-primary {
+    @apply bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700;
+  }
+
+  .btn-secondary {
+    @apply border border-line bg-white text-ink-900 hover:bg-warm-100 active:bg-warm-200;
+  }
+
+  .btn-ghost {
+    @apply text-ink-700 hover:bg-brand-50 hover:text-brand-700;
+  }
+
+  .btn-sm {
+    @apply h-9 px-4 text-sm;
+  }
+
+  .btn-md {
+    @apply h-10 px-5 text-sm;
+  }
+
+  .btn-lg {
+    @apply h-12 px-6 text-[0.95rem];
+  }
+
+  /* Surfaces */
+  .card {
+    @apply rounded-2xl border border-line bg-white p-6;
+  }
+
+  .surface {
+    @apply rounded-2xl border border-line bg-white;
+  }
+
+  .icon-tile {
+    @apply grid size-10 shrink-0 place-items-center rounded-xl border border-brand-200 bg-brand-50 text-brand-600;
+  }
+
+  /* Small UI pieces */
+  .eyebrow {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-medium tracking-wide text-brand-700;
+  }
+
+  .tag {
+    @apply inline-flex items-center rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink-700;
+  }
+
+  .avatar {
+    @apply grid shrink-0 place-items-center rounded-full bg-brand-100 text-[11px] font-semibold text-brand-700;
+  }
+
+  .nav-link {
+    @apply rounded-full px-3 py-2 text-sm font-medium text-ink-700 transition-colors hover:bg-brand-50 hover:text-brand-700;
+  }
+
+  .footer-link {
+    @apply text-sm text-ink-500 transition-colors hover:text-brand-700;
+  }
+
+  .prose-muted {
+    @apply text-sm leading-relaxed text-ink-500;
+  }
+
+  /* Inline link inside section copy — underlined so it never relies on
+     colour alone, in the brand accent so it reads as part of the design. */
+  .link {
+    @apply font-medium text-brand-600 underline decoration-brand-200 underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-brand-500;
+  }
 }
