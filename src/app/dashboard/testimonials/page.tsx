@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Download,
   ExternalLink,
   Eye,
   FileText,
@@ -27,6 +28,7 @@ import {
   Star,
   Tag as TagIcon,
   Trash2,
+  Upload,
   Video,
   X,
   XCircle,
@@ -36,6 +38,7 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { ModalDialog } from "@/components/dashboard/modal-dialog";
 import { TestimonialMedia } from "@/components/ui/testimonial-media";
+import { ExportModal } from "@/components/dashboard/export-modal";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
 
@@ -180,6 +183,9 @@ function TestimonialsContent() {
   const [newTagColor, setNewTagColor] = useState("#7049D8");
   const [editingTag, setEditingTag] = useState<TagItem | null>(null);
   const [tagActionLoading, setTagActionLoading] = useState(false);
+
+  // Export modal state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // Single item action in-progress
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
@@ -638,6 +644,21 @@ function TestimonialsContent() {
         }
         actions={
           <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/testimonials/import"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
+            >
+              <Upload size={13} className="text-brand-600" />
+              <span>Import</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => setIsExportModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
+            >
+              <Download size={13} className="text-brand-600" />
+              <span>Export</span>
+            </button>
             <button
               type="button"
               onClick={() => setIsTagManagerOpen(true)}
@@ -913,6 +934,16 @@ function TestimonialsContent() {
             >
               <Trash2 size={12} />
               <span>Bulk Delete</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isBulkExecuting}
+              onClick={() => setIsExportModalOpen(true)}
+              className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1 font-medium text-ink-700 hover:bg-warm-100 transition-colors shadow-2xs disabled:opacity-50"
+            >
+              <Download size={12} className="text-brand-600" />
+              <span>Export Selected ({selectedIds.length})</span>
             </button>
 
             <button
@@ -1659,6 +1690,15 @@ function TestimonialsContent() {
 
                 {selectedTestimonial.status === "APPROVED" && (
                   <>
+                    <Link
+                      href={`/t/${selectedTestimonial.id}`}
+                      target="_blank"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
+                      title="Open dedicated public testimonial page"
+                    >
+                      <ExternalLink size={13} />
+                      <span>Public Link</span>
+                    </Link>
                     <button
                       type="button"
                       onClick={() =>
@@ -1795,6 +1835,18 @@ function TestimonialsContent() {
                   {selectedTestimonial.status === "ARCHIVED" && <Archive size={11} />}
                   <span>{selectedTestimonial.status}</span>
                 </span>
+
+                {selectedTestimonial.status === "APPROVED" && (
+                  <Link
+                    href={`/t/${selectedTestimonial.id}`}
+                    target="_blank"
+                    className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 transition-colors shadow-2xs"
+                    title="Open dedicated public testimonial page"
+                  >
+                    <ExternalLink size={11} />
+                    <span>Public Page</span>
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -2139,6 +2191,23 @@ function TestimonialsContent() {
         message={`Are you sure you want to permanently delete ${selectedIds.length} selected testimonials? All associated files, tags, and consent logs will be removed immediately. This cannot be undone.`}
         confirmLabel={`Delete ${selectedIds.length} Records`}
         isDestructive={true}
+      />
+
+      {/* ------------------------------------------------------------- */}
+      {/* 10. Testimonial Export Modal */}
+      {/* ------------------------------------------------------------- */}
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        selectedIds={selectedIds}
+        currentFilters={{
+          projectId: projectFilter,
+          status: activeTab,
+          rating: ratingFilter,
+          dateRange: dateRangeFilter,
+          search: search,
+        }}
+        totalCount={counts.all}
       />
     </div>
   );

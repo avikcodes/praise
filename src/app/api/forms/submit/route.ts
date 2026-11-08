@@ -5,6 +5,11 @@ import {
   getClientIp,
   validateSpamHeuristics,
 } from "@/lib/security/rate-limit";
+import {
+  formatCustomerMeta,
+  parseCustomerMeta,
+  INTERNAL_EMAIL_SUFFIX,
+} from "@/lib/customers/utils";
 
 // Basic email regex validator
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -205,32 +210,35 @@ export async function POST(request: Request) {
     }
 
     // 5. Duplicate Submission Detection (same email & content within last 10 minutes)
-    const cleanEmail = (customerEmail || `respondent-${Date.now()}@praise.local`)
-      .trim()
-      .toLowerCase();
+    const hasProvidedEmail = Boolean(customerEmail && customerEmail.trim());
+    const cleanEmail = hasProvidedEmail
+      ? customerEmail!.trim().toLowerCase()
+      : `no-email-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${INTERNAL_EMAIL_SUFFIX}`;
     const cleanContent = content?.trim() || "Customer submitted feedback.";
 
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-    const existingSubmission = await prisma.testimonial.findFirst({
-      where: {
-        formId: form.id,
-        content: { startsWith: cleanContent.slice(0, 50) },
-        customer: { email: cleanEmail },
-        submittedAt: { gte: tenMinutesAgo },
-      },
-    });
-
-    if (existingSubmission) {
-      return NextResponse.json(
-        {
-          success: true,
-          message: "We have already received your testimonial. Thank you!",
-          testimonialId: existingSubmission.id,
-          redirectUrl: form.redirectUrl || null,
-          status: "PENDING",
+    if (hasProvidedEmail) {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const existingSubmission = await prisma.testimonial.findFirst({
+        where: {
+          formId: form.id,
+          content: { startsWith: cleanContent.slice(0, 50) },
+          customer: { email: cleanEmail },
+          submittedAt: { gte: tenMinutesAgo },
         },
-        { status: 200 },
-      );
+      });
+
+      if (existingSubmission) {
+        return NextResponse.json(
+          {
+            success: true,
+            message: "We have already received your testimonial. Thank you!",
+            testimonialId: existingSubmission.id,
+            redirectUrl: form.redirectUrl || null,
+            status: "PENDING",
+          },
+          { status: 200 },
+        );
+      }
     }
 
     // 6. Build structured testimonial content including custom question responses if any
@@ -252,6 +260,25 @@ export async function POST(request: Request) {
     // 7. Atomic Storage: Upsert Customer, Create Testimonial with PENDING status, Create ConsentRecord
     const savedTestimonial = await prisma.$transaction(async (tx) => {
       // 7a. Customer record
+      let existingCustomer = null;
+      if (hasProvidedEmail) {
+        existingCustomer = await tx.customer.findUnique({
+          where: {
+            workspaceId_email: {
+              workspaceId: form.workspaceId,
+              email: cleanEmail,
+            },
+          },
+          select: { socialHandle: true },
+        });
+      }
+
+      const existingMeta = parseCustomerMeta(existingCustomer?.socialHandle);
+      const mergedSocialHandle = formatCustomerMeta(
+        customerWebsite?.trim() || existingMeta.website,
+        existingMeta.notes,
+      );
+
       const customer = await tx.customer.upsert({
         where: {
           workspaceId_email: {
@@ -263,7 +290,7 @@ export async function POST(request: Request) {
           name: customerName?.trim() || "Anonymous Respondent",
           company: customerCompany?.trim() || null,
           title: customerTitle?.trim() || null,
-          socialHandle: customerWebsite?.trim() || null,
+          socialHandle: mergedSocialHandle,
           ...(customerAvatarUrl ? { avatarUrl: customerAvatarUrl } : {}),
         },
         create: {
@@ -272,7 +299,7 @@ export async function POST(request: Request) {
           email: cleanEmail,
           company: customerCompany?.trim() || null,
           title: customerTitle?.trim() || null,
-          socialHandle: customerWebsite?.trim() || null,
+          socialHandle: mergedSocialHandle,
           ...(customerAvatarUrl ? { avatarUrl: customerAvatarUrl } : {}),
         },
       });
