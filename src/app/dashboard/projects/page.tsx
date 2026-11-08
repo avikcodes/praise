@@ -16,11 +16,14 @@ import {
   Sparkles,
   Tag,
   Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { ModalDialog } from "@/components/dashboard/modal-dialog";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { useToast } from "@/components/dashboard/toast-context";
+import { PRESET_ACCENT_COLORS } from "@/lib/branding/utils";
 import {
   BrandItem,
   ProjectItem,
@@ -59,6 +62,7 @@ export default function ProjectsPage() {
   const [projLogoUrl, setProjLogoUrl] = useState("");
   const [projBrandId, setProjBrandId] = useState("");
   const [isSubmittingProject, setIsSubmittingProject] = useState(false);
+  const [isUploadingProjLogo, setIsUploadingProjLogo] = useState(false);
 
   // Brand Modals State
   const [isCreateBrandOpen, setIsCreateBrandOpen] = useState(false);
@@ -72,6 +76,54 @@ export default function ProjectsPage() {
   const [brandWebsite, setBrandWebsite] = useState("");
   const [brandLogoUrl, setBrandLogoUrl] = useState("");
   const [isSubmittingBrand, setIsSubmittingBrand] = useState(false);
+  const [isUploadingBrandLogo, setIsUploadingBrandLogo] = useState(false);
+
+  // Handle Logo Uploads
+  const handleProjLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeWorkspace?.id) return;
+    setIsUploadingProjLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", "IMAGE");
+      const res = await fetch(`/api/workspaces/${activeWorkspace.id}/media/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload logo image");
+      setProjLogoUrl(data.asset?.url || "");
+      toast.success("Logo Uploaded", "Project logo uploaded successfully.");
+    } catch (err: unknown) {
+      toast.error("Upload Failed", err instanceof Error ? err.message : "Error uploading logo");
+    } finally {
+      setIsUploadingProjLogo(false);
+    }
+  };
+
+  const handleBrandLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeWorkspace?.id) return;
+    setIsUploadingBrandLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", "IMAGE");
+      const res = await fetch(`/api/workspaces/${activeWorkspace.id}/media/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to upload brand logo");
+      setBrandLogoUrl(data.asset?.url || "");
+      toast.success("Brand Logo Uploaded", "Brand logo uploaded successfully.");
+    } catch (err: unknown) {
+      toast.error("Upload Failed", err instanceof Error ? err.message : "Error uploading logo");
+    } finally {
+      setIsUploadingBrandLogo(false);
+    }
+  };
 
   // Filter projects & brands
   const filteredProjects = projects.filter(
@@ -698,6 +750,22 @@ export default function ProjectsPage() {
                   className="w-full rounded-lg border border-line p-1.5 text-xs font-mono text-ink-900"
                 />
               </div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {PRESET_ACCENT_COLORS.slice(0, 8).map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    title={preset.label}
+                    onClick={() => setProjColor(preset.value)}
+                    className={`h-4 w-4 rounded-full border transition-transform ${
+                      projColor.toLowerCase() === preset.value.toLowerCase()
+                        ? "ring-2 ring-brand-500 ring-offset-1 scale-110"
+                        : "border-black/10 hover:scale-105"
+                    }`}
+                    style={{ backgroundColor: preset.value }}
+                  />
+                ))}
+              </div>
             </div>
 
             <div>
@@ -721,15 +789,54 @@ export default function ProjectsPage() {
 
           <div>
             <label className="block text-xs font-semibold text-ink-900 mb-1">
-              Project Logo URL (Optional)
+              Project Logo (Optional)
             </label>
-            <input
-              type="url"
-              value={projLogoUrl}
-              onChange={(e) => setProjLogoUrl(e.target.value)}
-              placeholder="https://example.com/logo.png"
-              className="w-full rounded-lg border border-line p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={projLogoUrl}
+                onChange={(e) => setProjLogoUrl(e.target.value)}
+                placeholder="https://example.com/logo.png or upload file"
+                className="flex-1 rounded-lg border border-line p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-warm-50 px-3 py-2 text-xs font-medium text-ink-700 hover:bg-warm-100 transition-colors shrink-0">
+                {isUploadingProjLogo ? (
+                  <Loader2 size={13} className="animate-spin text-brand-600" />
+                ) : (
+                  <Upload size={13} className="text-ink-600" />
+                )}
+                <span>{isUploadingProjLogo ? "Uploading..." : "Upload"}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleProjLogoUpload}
+                  disabled={isUploadingProjLogo}
+                />
+              </label>
+            </div>
+            {projLogoUrl && (
+              <div className="mt-2 flex items-center gap-2.5 rounded-lg border border-line bg-warm-50/70 p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={projLogoUrl}
+                  alt="Project Logo preview"
+                  className="h-8 w-8 rounded object-contain border border-line bg-white p-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium text-ink-900 truncate">{projLogoUrl}</p>
+                  <p className="text-[10px] text-ink-500">Logo active</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProjLogoUrl("")}
+                  className="rounded p-1 text-ink-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  title="Remove logo"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
           </div>
         </form>
       </ModalDialog>
@@ -838,19 +945,74 @@ export default function ProjectsPage() {
                   className="w-full rounded-lg border border-line p-1.5 text-xs font-mono text-ink-900"
                 />
               </div>
+              <div className="flex flex-wrap gap-1 mt-2">
+                {PRESET_ACCENT_COLORS.slice(0, 8).map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    title={preset.label}
+                    onClick={() => setBrandColor(preset.value)}
+                    className={`h-4 w-4 rounded-full border transition-transform ${
+                      brandColor.toLowerCase() === preset.value.toLowerCase()
+                        ? "ring-2 ring-brand-500 ring-offset-1 scale-110"
+                        : "border-black/10 hover:scale-105"
+                    }`}
+                    style={{ backgroundColor: preset.value }}
+                  />
+                ))}
+              </div>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-ink-900 mb-1">
-                Brand Logo URL (Optional)
+                Brand Logo (Optional)
               </label>
-              <input
-                type="url"
-                value={brandLogoUrl}
-                onChange={(e) => setBrandLogoUrl(e.target.value)}
-                placeholder="https://example.com/logo.svg"
-                className="w-full rounded-lg border border-line p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={brandLogoUrl}
+                  onChange={(e) => setBrandLogoUrl(e.target.value)}
+                  placeholder="https://example.com/logo.svg or upload"
+                  className="flex-1 rounded-lg border border-line p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-warm-50 px-2.5 py-2 text-xs font-medium text-ink-700 hover:bg-warm-100 transition-colors shrink-0">
+                  {isUploadingBrandLogo ? (
+                    <Loader2 size={13} className="animate-spin text-brand-600" />
+                  ) : (
+                    <Upload size={13} className="text-ink-600" />
+                  )}
+                  <span>{isUploadingBrandLogo ? "..." : "Upload"}</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleBrandLogoUpload}
+                    disabled={isUploadingBrandLogo}
+                  />
+                </label>
+              </div>
+              {brandLogoUrl && (
+                <div className="mt-2 flex items-center gap-2.5 rounded-lg border border-line bg-warm-50/70 p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={brandLogoUrl}
+                    alt="Brand Logo preview"
+                    className="h-8 w-8 rounded object-contain border border-line bg-white p-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-medium text-ink-900 truncate">{brandLogoUrl}</p>
+                    <p className="text-[10px] text-ink-500">Logo active</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setBrandLogoUrl("")}
+                    className="rounded p-1 text-ink-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="Remove logo"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </form>

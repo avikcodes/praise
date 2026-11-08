@@ -108,6 +108,26 @@ export async function GET(request: Request, context: RouteParams) {
       whereCondition.rating = { gte: config.minRating };
     }
 
+    // Filter specific manual testimonials if configured
+    if (
+      config.selectionMode === "manual" &&
+      config.selectedTestimonialIds &&
+      config.selectedTestimonialIds.length > 0
+    ) {
+      whereCondition.id = { in: config.selectedTestimonialIds };
+    }
+
+    // Filter by tags if configured
+    if (config.filterTags && config.filterTags.length > 0) {
+      whereCondition.tags = {
+        some: {
+          tag: {
+            name: { in: config.filterTags },
+          },
+        },
+      };
+    }
+
     // Determine ordering
     let orderBy: Prisma.TestimonialOrderByWithRelationInput[] = [
       { submittedAt: "desc" },

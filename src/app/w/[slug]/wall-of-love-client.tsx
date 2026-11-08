@@ -11,8 +11,10 @@ import {
   Globe,
   LayoutGrid,
   Layers,
+  List,
   MessageSquareQuote,
   Moon,
+  Quote,
   Search,
   Share2,
   Sparkles,
@@ -21,6 +23,12 @@ import {
 } from "lucide-react";
 import { TestimonialMedia } from "@/components/ui/testimonial-media";
 import { PraiseLogo } from "@/components/brand";
+import {
+  getCardBorderClasses,
+  getCardRadiusClasses,
+  getFontFamilyCss,
+} from "@/lib/branding/utils";
+import { WidgetRenderer } from "@/components/widgets";
 import { PublicTestimonialCard, PublicWallOfLoveData } from "@/types/widgets";
 
 type WallOfLoveClientProps = {
@@ -36,8 +44,16 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
   );
 
   // Layout state: defaults to config layout, but user can toggle
-  const [layoutMode, setLayoutMode] = useState<"masonry" | "grid">(
-    config.layout === "grid" ? "grid" : "masonry"
+  const [layoutMode, setLayoutMode] = useState<"masonry" | "grid" | "carousel" | "single_quote" | "list">(
+    config.layout === "grid"
+      ? "grid"
+      : config.layout === "carousel"
+      ? "carousel"
+      : config.layout === "single_quote"
+      ? "single_quote"
+      : config.layout === "list"
+      ? "list"
+      : "masonry"
   );
 
   // Search & tag filtering
@@ -112,7 +128,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
   const borderLine = isDark ? "border-ink-800" : isWarm ? "border-[#E9E4DB]" : "border-slate-200";
 
   return (
-    <div className={`min-h-screen ${containerBg} transition-colors duration-200`}>
+    <div
+      style={{ fontFamily: getFontFamilyCss(config.typographyFamily) }}
+      className={`min-h-screen ${containerBg} transition-colors duration-200`}
+    >
       {/* Top Navbar */}
       <header className={`border-b ${borderLine} sticky top-0 z-30 backdrop-blur-md ${isDark ? "bg-ink-950/80" : "bg-white/80"}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -320,6 +339,42 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               >
                 <LayoutGrid size={14} />
               </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode("carousel")}
+                className={`p-1.5 rounded-md transition-colors ${
+                  layoutMode === "carousel"
+                    ? "bg-brand-500 text-white shadow-2xs"
+                    : `${subtleText} hover:bg-warm-100/40`
+                }`}
+                title="Interactive Carousel"
+              >
+                <span className="text-[10px] font-bold px-0.5">Slides</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode("single_quote")}
+                className={`p-1.5 rounded-md transition-colors ${
+                  layoutMode === "single_quote"
+                    ? "bg-brand-500 text-white shadow-2xs"
+                    : `${subtleText} hover:bg-warm-100/40`
+                }`}
+                title="Spotlight Quote"
+              >
+                <Quote size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode("list")}
+                className={`p-1.5 rounded-md transition-colors ${
+                  layoutMode === "list"
+                    ? "bg-brand-500 text-white shadow-2xs"
+                    : `${subtleText} hover:bg-warm-100/40`
+                }`}
+                title="Feed / List View"
+              >
+                <List size={14} />
+              </button>
             </div>
           </div>
         </div>
@@ -353,6 +408,26 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
                 </a>
               </div>
             )}
+          </div>
+        ) : layoutMode === "carousel" || layoutMode === "single_quote" || layoutMode === "list" ? (
+          <div className="py-2">
+            <WidgetRenderer
+              type={layoutMode}
+              testimonials={filteredTestimonials}
+              config={{
+                theme: activeTheme,
+                accentColor: config.accentColor,
+                showRatings: config.showRatings,
+                showCompany: config.showCompany,
+                showAvatar: config.showAvatar,
+                showDate: config.showDate,
+                showTags: config.showTags,
+                showSource: config.showSource,
+                allowVideoPlayback: config.allowVideoPlayback,
+                autoplay: true,
+                autoplayInterval: 5000,
+              }}
+            />
           </div>
         ) : (
           <div
@@ -407,19 +482,21 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
         </section>
       )}
 
-      {/* Public Footer */}
-      <footer className={`border-t ${borderLine} py-8 text-center text-xs ${subtleText}`}>
-        <div className="flex items-center justify-center gap-2">
-          <span>Powered by</span>
-          <Link
-            href="/"
-            className="font-bold text-ink-900 hover:text-brand-600 inline-flex items-center gap-1 transition-colors"
-          >
-            <PraiseLogo size="sm" decorative />
-          </Link>
-          <span>&bull; Open Source Testimonial Engine</span>
-        </div>
-      </footer>
+      {/* Public Footer (Fully removable when showPraiseBranding is false) */}
+      {config.showPraiseBranding !== false && (
+        <footer className={`border-t ${borderLine} py-8 text-center text-xs ${subtleText}`}>
+          <div className="flex items-center justify-center gap-2">
+            <span>Powered by</span>
+            <Link
+              href="/"
+              className="font-bold text-ink-900 hover:text-brand-600 inline-flex items-center gap-1 transition-colors"
+            >
+              <PraiseLogo size="sm" decorative />
+            </Link>
+            <span>&bull; Open Source Testimonial Engine</span>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }
@@ -451,9 +528,12 @@ function TestimonialCard({
   // Has attached images
   const imageAssets = media.filter((m) => m.type === "IMAGE");
 
+  const radiusClass = getCardRadiusClasses(config.cardRadius);
+  const borderClass = getCardBorderClasses(config.cardBorder, isDark);
+
   return (
     <div
-      className={`rounded-2xl border ${borderLine} ${cardBg} p-5 transition-all hover:shadow-md ${
+      className={`${radiusClass} ${borderClass} ${cardBg} p-5 transition-all hover:shadow-md ${
         isMasonry ? "break-inside-avoid mb-5" : ""
       } ${isFeatured && config.showFeaturedBadge ? "ring-2 ring-brand-400/50" : ""}`}
     >

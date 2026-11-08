@@ -1,14 +1,30 @@
-export type WidgetLayout = "masonry" | "grid" | "adaptive";
-export type WidgetThemeMode = "warm" | "light" | "dark" | "auto";
+export type WidgetDisplayType = "grid" | "carousel" | "single_quote" | "list";
+export type WidgetLayout = "masonry" | "grid" | "carousel" | "single_quote" | "list" | "adaptive";
+export type WidgetThemeMode = "warm" | "light" | "dark" | "auto" | "transparent";
 export type WidgetOrdering = "featured_first" | "highest_rated" | "newest" | "oldest";
+export type WidgetTypographyFamily = "sans" | "serif" | "mono" | "geometric" | "humanist";
+export type WidgetTypographySize = "compact" | "normal" | "large";
+export type WidgetSelectionMode = "all" | "manual";
+export type WidgetCardBorder = "subtle" | "prominent" | "dashed" | "none";
+export type WidgetCardRadius = "none" | "small" | "medium" | "large" | "full";
+export type WidgetCardSpacing = "compact" | "normal" | "spacious";
 
 export type WallOfLoveConfig = {
   slug: string;
   title: string;
   description: string;
   layout: WidgetLayout;
+  widgetType?: WidgetDisplayType;
   theme: WidgetThemeMode;
   accentColor: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  backgroundColor?: string | null;
+  textColor?: string | null;
+  cardBorder?: WidgetCardBorder;
+  cardRadius?: WidgetCardRadius;
+  cardSpacing?: WidgetCardSpacing;
+  showPraiseBranding?: boolean;
   ordering: WidgetOrdering;
   showRatings: boolean;
   showCompany: boolean;
@@ -18,6 +34,11 @@ export type WallOfLoveConfig = {
   showSource: boolean;
   showFeaturedBadge: boolean;
   minRating: number;
+  selectionMode?: WidgetSelectionMode;
+  selectedTestimonialIds?: string[];
+  filterTags?: string[];
+  typographyFamily?: WidgetTypographyFamily;
+  typographySize?: WidgetTypographySize;
   ctaEnabled: boolean;
   ctaLabel: string;
   ctaUrl: string;
@@ -27,6 +48,9 @@ export type WallOfLoveConfig = {
   customLogoUrl?: string | null;
   allowVideoPlayback: boolean;
   cardsPerRow?: number;
+  autoplay?: boolean;
+  autoplayInterval?: number;
+  maxItems?: number;
 };
 
 export type WidgetDetail = {
@@ -60,6 +84,7 @@ export type PublicTestimonialMedia = {
 
 export type PublicTestimonialCard = {
   id: string;
+  status?: string;
   content: string;
   rating: number | null;
   type: "TEXT" | "VIDEO" | "AUDIO";

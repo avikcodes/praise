@@ -37,5 +37,6 @@ export type PublicIndividualTestimonial = {
   wallUrl?: string | null;
   collectionFormUrl?: string | null;
   isVerified: boolean;
+  showPraiseBranding?: boolean;
 };
 

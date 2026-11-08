@@ -30,7 +30,7 @@ export const createProjectSchema = z.object({
     .trim(),
   description: z.string().max(500).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color code").optional(),
-  logoUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  logoUrl: z.string().max(2000).optional().nullable(),
   brandId: z.string().optional().nullable(),
 });
 
@@ -44,7 +44,7 @@ export const updateProjectSchema = z.object({
     .optional(),
   description: z.string().max(500).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color code").optional(),
-  logoUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")).nullable(),
+  logoUrl: z.string().max(2000).optional().nullable(),
   brandId: z.string().optional().nullable(),
 });
 
@@ -55,9 +55,9 @@ export const createBrandSchema = z.object({
     .min(2, "Slug must be at least 2 characters")
     .regex(/^[a-z0-9-]+$/, "Slug may only contain lowercase letters, numbers, and hyphens")
     .trim(),
-  logoUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  logoUrl: z.string().max(2000).optional().nullable(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color code").optional(),
-  websiteUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  websiteUrl: z.string().max(2000).optional().nullable(),
 });
 
 export const updateBrandSchema = z.object({
@@ -68,9 +68,9 @@ export const updateBrandSchema = z.object({
     .regex(/^[a-z0-9-]+$/, "Slug may only contain lowercase letters, numbers, and hyphens")
     .trim()
     .optional(),
-  logoUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")).nullable(),
+  logoUrl: z.string().max(2000).optional().nullable(),
   accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color code").optional(),
-  websiteUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")).nullable(),
+  websiteUrl: z.string().max(2000).optional().nullable(),
 });
 
 export const formFieldSchema = z.object({

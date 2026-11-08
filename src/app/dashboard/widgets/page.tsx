@@ -3,14 +3,17 @@
 import { useEffect, useState } from "react";
 import {
   Check,
+  Code,
   Copy,
-  Edit2,
   ExternalLink,
+  Eye,
   Layers,
   Loader2,
   MessageSquareQuote,
   Plus,
   Share2,
+  Sliders,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -19,61 +22,44 @@ import { ModalDialog } from "@/components/dashboard/modal-dialog";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
-import { defaultWallOfLoveConfig, sanitizePublicSlug } from "@/lib/widgets/utils";
+import { WidgetRenderer } from "@/components/widgets";
+import { WidgetCustomizer } from "@/components/dashboard/widgets/widget-customizer";
 import {
-  WallOfLoveConfig,
+  PublicTestimonialCard,
   WidgetDetail,
-  WidgetLayout,
-  WidgetOrdering,
-  WidgetThemeMode,
+  WidgetDisplayType,
 } from "@/types/widgets";
 
 export default function WidgetsPage() {
-  const { activeWorkspace, projects } = useWorkspace();
+  const { activeWorkspace } = useWorkspace();
   const toast = useToast();
   const workspaceId = activeWorkspace?.id;
 
   const [widgets, setWidgets] = useState<WidgetDetail[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Dedicated Widget Customizer State
+  const [isCustomizing, setIsCustomizing] = useState(false);
+  const [customizingWidget, setCustomizingWidget] = useState<WidgetDetail | null>(null);
+
   // Modals state
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [editingWidget, setEditingWidget] = useState<WidgetDetail | null>(null);
   const [sharingWidget, setSharingWidget] = useState<WidgetDetail | null>(null);
   const [deletingWidget, setDeletingWidget] = useState<WidgetDetail | null>(null);
-
-  // Form State for Create & Edit
-  const [formName, setFormName] = useState("");
-  const [formSlug, setFormSlug] = useState("");
-  const [formProjectId, setFormProjectId] = useState<string>("all");
-  const [formTitle, setFormTitle] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formLayout, setFormLayout] = useState<WidgetLayout>("masonry");
-  const [formTheme, setFormTheme] = useState<WidgetThemeMode>("warm");
-  const [formAccentColor, setFormAccentColor] = useState("#7049D8");
-  const [formOrdering, setFormOrdering] = useState<WidgetOrdering>("featured_first");
-  const [formShowRatings, setFormShowRatings] = useState(true);
-  const [formShowCompany, setFormShowCompany] = useState(true);
-  const [formShowAvatar, setFormShowAvatar] = useState(true);
-  const [formShowDate, setFormShowDate] = useState(true);
-  const [formShowTags, setFormShowTags] = useState(true);
-  const [formShowFeaturedBadge, setFormShowFeaturedBadge] = useState(true);
-  const [formMinRating, setFormMinRating] = useState(0);
-  const [formCtaEnabled, setFormCtaEnabled] = useState(true);
-  const [formCtaLabel, setFormCtaLabel] = useState("Share Your Praise");
-  const [formCtaUrl, setFormCtaUrl] = useState("");
-  const [formCtaSecondaryEnabled, setFormCtaSecondaryEnabled] = useState(false);
-  const [formCtaSecondaryLabel, setFormCtaSecondaryLabel] = useState("Visit Website");
-  const [formCtaSecondaryUrl, setFormCtaSecondaryUrl] = useState("");
-  const [formAllowVideo, setFormAllowVideo] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Copy state
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [embedMethod, setEmbedMethod] = useState<"script" | "iframe">("script");
+  const [iframeVariant, setIframeVariant] = useState<"auto" | "static">("auto");
 
-  // Active form tab: "general" | "appearance" | "ordering" | "cta"
-  const [activeFormTab, setActiveFormTab] = useState<"general" | "appearance" | "ordering" | "cta">("general");
+  // Preview modal state
+  const [previewingWidget, setPreviewingWidget] = useState<WidgetDetail | null>(null);
+  const [previewType, setPreviewType] = useState<WidgetDisplayType>("grid");
+  const [previewTestimonials, setPreviewTestimonials] = useState<PublicTestimonialCard[]>([]);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [embedWidgetType, setEmbedWidgetType] = useState<WidgetDisplayType>("grid");
+
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -103,194 +89,30 @@ export default function WidgetsPage() {
     };
   }, [workspaceId, refreshKey]);
 
-  // Open Create Modal
-  const handleOpenCreate = () => {
-    const base = defaultWallOfLoveConfig(
-      `${activeWorkspace?.name || "Product"} Wall of Love`,
-      `${activeWorkspace?.slug || "product"}-love`
-    );
-    setFormName(base.title);
-    setFormSlug(base.slug);
-    setFormProjectId("all");
-    setFormTitle(base.title);
-    setFormDescription(base.description);
-    setFormLayout(base.layout);
-    setFormTheme(base.theme);
-    setFormAccentColor(base.accentColor);
-    setFormOrdering(base.ordering);
-    setFormShowRatings(base.showRatings);
-    setFormShowCompany(base.showCompany);
-    setFormShowAvatar(base.showAvatar);
-    setFormShowDate(base.showDate);
-    setFormShowTags(base.showTags);
-    setFormShowFeaturedBadge(base.showFeaturedBadge);
-    setFormMinRating(base.minRating);
-    setFormCtaEnabled(base.ctaEnabled);
-    setFormCtaLabel(base.ctaLabel);
-    setFormCtaUrl(base.ctaUrl);
-    setFormCtaSecondaryEnabled(base.ctaSecondaryEnabled);
-    setFormCtaSecondaryLabel(base.ctaSecondaryLabel);
-    setFormCtaSecondaryUrl(base.ctaSecondaryUrl);
-    setFormAllowVideo(base.allowVideoPlayback);
-    setActiveFormTab("general");
-    setIsCreateModalOpen(true);
-  };
-
-  // Open Edit Modal prefilled
-  const handleOpenEdit = (w: WidgetDetail) => {
-    setEditingWidget(w);
-    setFormName(w.name);
-    setFormSlug(w.config.slug || w.id);
-    setFormProjectId(w.projectId || "all");
-    setFormTitle(w.config.title);
-    setFormDescription(w.config.description);
-    setFormLayout(w.config.layout);
-    setFormTheme(w.config.theme);
-    setFormAccentColor(w.config.accentColor);
-    setFormOrdering(w.config.ordering);
-    setFormShowRatings(w.config.showRatings);
-    setFormShowCompany(w.config.showCompany);
-    setFormShowAvatar(w.config.showAvatar);
-    setFormShowDate(w.config.showDate);
-    setFormShowTags(w.config.showTags);
-    setFormShowFeaturedBadge(w.config.showFeaturedBadge);
-    setFormMinRating(w.config.minRating);
-    setFormCtaEnabled(w.config.ctaEnabled);
-    setFormCtaLabel(w.config.ctaLabel);
-    setFormCtaUrl(w.config.ctaUrl);
-    setFormCtaSecondaryEnabled(w.config.ctaSecondaryEnabled);
-    setFormCtaSecondaryLabel(w.config.ctaSecondaryLabel);
-    setFormCtaSecondaryUrl(w.config.ctaSecondaryUrl);
-    setFormAllowVideo(w.config.allowVideoPlayback);
-    setActiveFormTab("general");
-  };
-
-  // Create submission
-  const handleCreateWidget = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!workspaceId) return;
-
-    if (!formName.trim()) {
-      toast.error("Validation Error", "Please provide a name for this Wall of Love.");
-      return;
-    }
-
-    setIsSubmitting(true);
+  // Open Preview Modal
+  const handleOpenPreview = async (w: WidgetDetail, type?: WidgetDisplayType) => {
+    setPreviewingWidget(w);
+    const initialType =
+      type ||
+      (w.config.layout === "carousel"
+        ? "carousel"
+        : w.config.layout === "single_quote"
+        ? "single_quote"
+        : w.config.layout === "list"
+        ? "list"
+        : "grid");
+    setPreviewType(initialType);
+    setIsLoadingPreview(true);
     try {
-      const configPayload: WallOfLoveConfig = {
-        slug: sanitizePublicSlug(formSlug || formName),
-        title: formTitle.trim() || formName.trim(),
-        description: formDescription.trim(),
-        layout: formLayout,
-        theme: formTheme,
-        accentColor: formAccentColor,
-        ordering: formOrdering,
-        showRatings: formShowRatings,
-        showCompany: formShowCompany,
-        showAvatar: formShowAvatar,
-        showDate: formShowDate,
-        showTags: formShowTags,
-        showSource: true,
-        showFeaturedBadge: formShowFeaturedBadge,
-        minRating: formMinRating,
-        ctaEnabled: formCtaEnabled,
-        ctaLabel: formCtaLabel.trim(),
-        ctaUrl: formCtaUrl.trim(),
-        ctaSecondaryEnabled: formCtaSecondaryEnabled,
-        ctaSecondaryLabel: formCtaSecondaryLabel.trim(),
-        ctaSecondaryUrl: formCtaSecondaryUrl.trim(),
-        allowVideoPlayback: formAllowVideo,
-      };
-
-      const res = await fetch(`/api/workspaces/${workspaceId}/widgets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formName.trim(),
-          type: "WALL_OF_LOVE",
-          theme: formTheme.toUpperCase(),
-          projectId: formProjectId === "all" ? null : formProjectId,
-          config: configPayload,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create Wall of Love.");
+      const res = await fetch(`/api/wall/${w.config.slug || w.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewTestimonials(data.testimonials || []);
       }
-
-      toast.success(
-        "Wall of Love Published",
-        `Created "${data.widget.name}". View it at /w/${data.widget.config.slug}`
-      );
-      setIsCreateModalOpen(false);
-      setRefreshKey((k) => k + 1);
-    } catch (err: unknown) {
-      toast.error("Error", err instanceof Error ? err.message : "Creation failed");
+    } catch (err) {
+      console.error("Failed to load preview testimonials:", err);
     } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Edit submission
-  const handleUpdateWidget = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!workspaceId || !editingWidget) return;
-
-    setIsSubmitting(true);
-    try {
-      const configPayload: WallOfLoveConfig = {
-        slug: sanitizePublicSlug(formSlug || editingWidget.name),
-        title: formTitle.trim() || formName.trim(),
-        description: formDescription.trim(),
-        layout: formLayout,
-        theme: formTheme,
-        accentColor: formAccentColor,
-        ordering: formOrdering,
-        showRatings: formShowRatings,
-        showCompany: formShowCompany,
-        showAvatar: formShowAvatar,
-        showDate: formShowDate,
-        showTags: formShowTags,
-        showSource: true,
-        showFeaturedBadge: formShowFeaturedBadge,
-        minRating: formMinRating,
-        ctaEnabled: formCtaEnabled,
-        ctaLabel: formCtaLabel.trim(),
-        ctaUrl: formCtaUrl.trim(),
-        ctaSecondaryEnabled: formCtaSecondaryEnabled,
-        ctaSecondaryLabel: formCtaSecondaryLabel.trim(),
-        ctaSecondaryUrl: formCtaSecondaryUrl.trim(),
-        allowVideoPlayback: formAllowVideo,
-      };
-
-      const res = await fetch(
-        `/api/workspaces/${workspaceId}/widgets/${editingWidget.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: formName.trim(),
-            type: "WALL_OF_LOVE",
-            theme: formTheme.toUpperCase(),
-            projectId: formProjectId === "all" ? null : formProjectId,
-            config: configPayload,
-          }),
-        }
-      );
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update widget.");
-      }
-
-      toast.success("Settings Saved", `Updated "${data.widget.name}".`);
-      setEditingWidget(null);
-      setRefreshKey((k) => k + 1);
-    } catch (err: unknown) {
-      toast.error("Update Failed", err instanceof Error ? err.message : "Error saving");
-    } finally {
-      setIsSubmitting(false);
+      setIsLoadingPreview(false);
     }
   };
 
@@ -316,20 +138,41 @@ export default function WidgetsPage() {
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
+  // If in Widget Customizer mode, show full dual-pane builder interface
+  if (isCustomizing) {
+    return (
+      <WidgetCustomizer
+        initialWidget={customizingWidget}
+        onSaveSuccess={() => {
+          setIsCustomizing(false);
+          setCustomizingWidget(null);
+          setRefreshKey((k) => k + 1);
+        }}
+        onCancel={() => {
+          setIsCustomizing(false);
+          setCustomizingWidget(null);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Public Wall of Love &amp; Widgets"
-        description="Publish approved customer testimonials on dedicated public pages and generate copy-and-paste embed snippets."
+        description="Design, customize, and publish embeddable testimonial widgets and dedicated public pages."
         actions={
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleOpenCreate}
+              onClick={() => {
+                setCustomizingWidget(null);
+                setIsCustomizing(true);
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-brand-600 transition-colors"
             >
               <Plus size={14} />
-              <span>Create Wall of Love</span>
+              <span>Create Widget</span>
             </button>
           </div>
         }
@@ -350,11 +193,14 @@ export default function WidgetsPage() {
             action={
               <button
                 type="button"
-                onClick={handleOpenCreate}
+                onClick={() => {
+                  setCustomizingWidget(null);
+                  setIsCustomizing(true);
+                }}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-xs font-semibold text-white shadow-2xs hover:bg-brand-600 transition-colors"
               >
                 <Plus size={14} />
-                <span>Create Your First Wall of Love</span>
+                <span>Create Your First Widget</span>
               </button>
             }
           />
@@ -432,6 +278,14 @@ export default function WidgetsPage() {
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
+                      onClick={() => handleOpenPreview(w)}
+                      className="p-1.5 rounded-lg border border-line text-ink-600 hover:bg-warm-100 transition-colors"
+                      title="Live Preview Widget Layouts"
+                    >
+                      <Eye size={13} />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setSharingWidget(w)}
                       className="p-1.5 rounded-lg border border-line text-ink-600 hover:bg-warm-100 transition-colors"
                       title="Share link &amp; Embed code"
@@ -440,11 +294,14 @@ export default function WidgetsPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleOpenEdit(w)}
+                      onClick={() => {
+                        setCustomizingWidget(w);
+                        setIsCustomizing(true);
+                      }}
                       className="p-1.5 rounded-lg border border-line text-ink-600 hover:bg-warm-100 transition-colors"
-                      title="Edit Wall Settings"
+                      title="Customize Widget"
                     >
-                      <Edit2 size={13} />
+                      <Sliders size={13} />
                     </button>
                     <button
                       type="button"
@@ -461,408 +318,6 @@ export default function WidgetsPage() {
           })}
         </div>
       )}
-
-      {/* CREATE & EDIT MODAL */}
-      <ModalDialog
-        isOpen={isCreateModalOpen || Boolean(editingWidget)}
-        onClose={() => {
-          setIsCreateModalOpen(false);
-          setEditingWidget(null);
-        }}
-        title={editingWidget ? `Edit "${editingWidget.name}"` : "Create Public Wall of Love"}
-        description="Publish a dedicated, beautiful social proof page showcasing approved customer testimonials."
-        maxWidth="2xl"
-      >
-        <form onSubmit={editingWidget ? handleUpdateWidget : handleCreateWidget} className="space-y-4">
-          {/* Navigation Tabs */}
-          <div className="flex items-center border-b border-line gap-2 text-xs font-semibold">
-            {[
-              { id: "general", label: "General & Slug" },
-              { id: "appearance", label: "Layout & Theme" },
-              { id: "ordering", label: "Ordering & Display" },
-              { id: "cta", label: "Call to Action" },
-            ].map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setActiveFormTab(t.id as typeof activeFormTab)}
-                className={`py-2 px-3 border-b-2 transition-colors ${
-                  activeFormTab === t.id
-                    ? "border-brand-500 text-brand-600 font-bold"
-                    : "border-transparent text-ink-500 hover:text-ink-800"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* TAB 1: GENERAL */}
-          {activeFormTab === "general" && (
-            <div className="space-y-4 pt-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">
-                    Wall Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => {
-                      setFormName(e.target.value);
-                      if (!editingWidget) {
-                        setFormSlug(sanitizePublicSlug(e.target.value));
-                      }
-                    }}
-                    placeholder="e.g. Acme Customer Love"
-                    className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">
-                    Public Page Slug <span className="text-rose-500">*</span>
-                  </label>
-                  <div className="flex items-center">
-                    <span className="rounded-l-lg border border-r-0 border-line bg-warm-100 px-2.5 py-1.5 text-xs text-ink-500">
-                      /w/
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      value={formSlug}
-                      onChange={(e) => setFormSlug(sanitizePublicSlug(e.target.value))}
-                      placeholder="acme-love"
-                      className="w-full rounded-r-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-ink-700 mb-1">
-                  Associated Project
-                </label>
-                <select
-                  value={formProjectId}
-                  onChange={(e) => setFormProjectId(e.target.value)}
-                  className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                >
-                  <option value="all">All Projects in Workspace</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-ink-400 mt-1">
-                  Choose whether this Wall of Love displays testimonials from a specific project or your whole workspace.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-ink-700 mb-1">
-                  Public Page Title
-                </label>
-                <input
-                  type="text"
-                  value={formTitle}
-                  onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="Loved by 1,000+ teams worldwide"
-                  className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-ink-700 mb-1">
-                  Public Page Description
-                </label>
-                <textarea
-                  rows={2}
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="See how creators, engineers, and teams use our product every day."
-                  className="w-full rounded-lg border border-line bg-white p-2.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: APPEARANCE & THEME */}
-          {activeFormTab === "appearance" && (
-            <div className="space-y-4 pt-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">
-                    Layout Style
-                  </label>
-                  <select
-                    value={formLayout}
-                    onChange={(e) => setFormLayout(e.target.value as WidgetLayout)}
-                    className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  >
-                    <option value="masonry">Masonry (Pinterest-style columns)</option>
-                    <option value="grid">Responsive 3-Column Grid</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">
-                    Color Theme
-                  </label>
-                  <select
-                    value={formTheme}
-                    onChange={(e) => setFormTheme(e.target.value as WidgetThemeMode)}
-                    className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  >
-                    <option value="warm">Praise Warm (Beige / Warm Tone)</option>
-                    <option value="light">Crisp Light (White / Slate)</option>
-                    <option value="dark">Midnight Dark (Deep Zinc / Obsidian)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-ink-700 mb-1">
-                  Brand Accent Color
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={formAccentColor}
-                    onChange={(e) => setFormAccentColor(e.target.value)}
-                    className="h-8 w-12 rounded cursor-pointer border border-line p-0.5 bg-white"
-                  />
-                  <input
-                    type="text"
-                    value={formAccentColor}
-                    onChange={(e) => setFormAccentColor(e.target.value)}
-                    className="w-28 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-mono text-ink-900"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: ORDERING & DISPLAY */}
-          {activeFormTab === "ordering" && (
-            <div className="space-y-4 pt-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">
-                    Testimonial Ordering
-                  </label>
-                  <select
-                    value={formOrdering}
-                    onChange={(e) => setFormOrdering(e.target.value as WidgetOrdering)}
-                    className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  >
-                    <option value="featured_first">Featured / Pinned First (Recommended)</option>
-                    <option value="highest_rated">Highest Rated (5★ reviews first)</option>
-                    <option value="newest">Most Recent</option>
-                    <option value="oldest">Oldest First</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">
-                    Minimum Rating Filter
-                  </label>
-                  <select
-                    value={formMinRating}
-                    onChange={(e) => setFormMinRating(Number(e.target.value))}
-                    className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  >
-                    <option value={0}>Show all approved ratings (1-5★)</option>
-                    <option value={4}>4 Stars and above only (4-5★)</option>
-                    <option value={5}>5 Stars only (5★)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-2 pt-2 border-t border-line text-xs">
-                <span className="block font-semibold text-ink-900 mb-2">Display Elements</span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-ink-700">
-                    <input
-                      type="checkbox"
-                      checked={formShowRatings}
-                      onChange={(e) => setFormShowRatings(e.target.checked)}
-                      className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>Show Star Ratings</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-ink-700">
-                    <input
-                      type="checkbox"
-                      checked={formShowCompany}
-                      onChange={(e) => setFormShowCompany(e.target.checked)}
-                      className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>Show Customer Company &amp; Role</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-ink-700">
-                    <input
-                      type="checkbox"
-                      checked={formShowAvatar}
-                      onChange={(e) => setFormShowAvatar(e.target.checked)}
-                      className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>Show Customer Avatar / Photo</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-ink-700">
-                    <input
-                      type="checkbox"
-                      checked={formShowDate}
-                      onChange={(e) => setFormShowDate(e.target.checked)}
-                      className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>Show Submission Date</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-ink-700">
-                    <input
-                      type="checkbox"
-                      checked={formShowFeaturedBadge}
-                      onChange={(e) => setFormShowFeaturedBadge(e.target.checked)}
-                      className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>Show &ldquo;Featured Story&rdquo; Badges</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-ink-700">
-                    <input
-                      type="checkbox"
-                      checked={formAllowVideo}
-                      onChange={(e) => setFormAllowVideo(e.target.checked)}
-                      className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                    />
-                    <span>Allow Direct Video Playback</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: CALL TO ACTION */}
-          {activeFormTab === "cta" && (
-            <div className="space-y-4 pt-1">
-              {/* Primary CTA */}
-              <div className="p-3.5 rounded-xl border border-line bg-warm-50/50 space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer font-semibold text-ink-900 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={formCtaEnabled}
-                    onChange={(e) => setFormCtaEnabled(e.target.checked)}
-                    className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                  />
-                  <span>Enable Primary Call to Action Button</span>
-                </label>
-
-                {formCtaEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <label className="block text-[11px] font-medium text-ink-700 mb-1">
-                        Button Label
-                      </label>
-                      <input
-                        type="text"
-                        value={formCtaLabel}
-                        onChange={(e) => setFormCtaLabel(e.target.value)}
-                        placeholder="Share Your Praise"
-                        className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-medium text-ink-700 mb-1">
-                        Destination URL
-                      </label>
-                      <input
-                        type="text"
-                        value={formCtaUrl}
-                        onChange={(e) => setFormCtaUrl(e.target.value)}
-                        placeholder="/p/feedback or https://yourproduct.com"
-                        className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Secondary CTA */}
-              <div className="p-3.5 rounded-xl border border-line bg-warm-50/50 space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer font-semibold text-ink-900 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={formCtaSecondaryEnabled}
-                    onChange={(e) => setFormCtaSecondaryEnabled(e.target.checked)}
-                    className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
-                  />
-                  <span>Enable Secondary Button</span>
-                </label>
-
-                {formCtaSecondaryEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <label className="block text-[11px] font-medium text-ink-700 mb-1">
-                        Button Label
-                      </label>
-                      <input
-                        type="text"
-                        value={formCtaSecondaryLabel}
-                        onChange={(e) => setFormCtaSecondaryLabel(e.target.value)}
-                        placeholder="Visit Website"
-                        className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-medium text-ink-700 mb-1">
-                        Destination URL
-                      </label>
-                      <input
-                        type="text"
-                        value={formCtaSecondaryUrl}
-                        onChange={(e) => setFormCtaSecondaryUrl(e.target.value)}
-                        placeholder="https://yourwebsite.com"
-                        className="w-full rounded-lg border border-line bg-white px-3 py-1.5 text-xs text-ink-900"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Footer Save Actions */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
-            <button
-              type="button"
-              onClick={() => {
-                setIsCreateModalOpen(false);
-                setEditingWidget(null);
-              }}
-              className="rounded-lg border border-line bg-white px-3.5 py-1.5 text-xs font-semibold text-ink-700 hover:bg-warm-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 transition-colors shadow-2xs disabled:opacity-50"
-            >
-              {isSubmitting && <Loader2 size={13} className="animate-spin" />}
-              <span>{editingWidget ? "Save Changes" : "Publish Wall of Love"}</span>
-            </button>
-          </div>
-        </form>
-      </ModalDialog>
 
       {/* SHARE & EMBED DIALOG */}
       {sharingWidget && (
@@ -913,31 +368,263 @@ export default function WidgetsPage() {
               </div>
             </div>
 
-            {/* iFrame Embed */}
+            {/* Widget Embed Type Selector */}
             <div>
-              <label className="block font-semibold text-ink-900 mb-1.5">
-                Responsive HTML iFrame Embed
+              <label className="block font-semibold text-ink-900 mb-1.5 text-xs">
+                Embed Layout Format
               </label>
-              <div className="relative">
-                <pre className="rounded-xl border border-line bg-warm-100 p-3 font-mono text-[11px] text-ink-900 overflow-x-auto">
-                  {`<iframe src="${origin}/w/${sharingWidget.config.slug || sharingWidget.id}" width="100%" height="800" frameborder="0"></iframe>`}
-                </pre>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: "grid", label: "Grid" },
+                  { id: "carousel", label: "Carousel" },
+                  { id: "single_quote", label: "Single Quote" },
+                  { id: "list", label: "Feed / List" },
+                ].map((type) => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => setEmbedWidgetType(type.id as WidgetDisplayType)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-semibold text-center transition-all ${
+                      embedWidgetType === type.id
+                        ? "border-brand-500 bg-brand-50 text-brand-700 shadow-2xs"
+                        : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Embed Method Selector */}
+            <div>
+              <label className="block font-semibold text-ink-900 mb-1.5 text-xs">
+                Embed Code Format
+              </label>
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      `<iframe src="${origin}/w/${sharingWidget.config.slug || sharingWidget.id}" width="100%" height="800" frameborder="0"></iframe>`
-                    );
-                    setCopiedEmbed(true);
-                    setTimeout(() => setCopiedEmbed(false), 2000);
-                    toast.success("Snippet Copied", "iFrame code copied to clipboard.");
-                  }}
-                  className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded-md bg-white border border-line px-2 py-1 text-[11px] font-semibold text-ink-700 hover:bg-warm-50 shadow-2xs"
+                  onClick={() => setEmbedMethod("script")}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    embedMethod === "script"
+                      ? "border-brand-500 bg-brand-50 ring-1 ring-brand-500 shadow-2xs"
+                      : "border-line bg-white hover:bg-warm-50 text-ink-600"
+                  }`}
                 >
-                  {copiedEmbed ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
-                  <span>{copiedEmbed ? "Copied" : "Copy Code"}</span>
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-ink-900">
+                    <Sparkles size={12} className="text-brand-600" />
+                    <span>JavaScript Script</span>
+                  </div>
+                  <p className="text-[10px] text-ink-500 mt-0.5">
+                    Recommended &bull; Auto-resizing &bull; Responsive
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEmbedMethod("iframe")}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    embedMethod === "iframe"
+                      ? "border-brand-500 bg-brand-50 ring-1 ring-brand-500 shadow-2xs"
+                      : "border-line bg-white hover:bg-warm-50 text-ink-600"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-ink-900">
+                    <Code size={12} className="text-ink-600" />
+                    <span>HTML iFrame</span>
+                  </div>
+                  <p className="text-[10px] text-ink-500 mt-0.5">
+                    Sandboxed &bull; Script-restricted sites
+                  </p>
                 </button>
               </div>
+            </div>
+
+            {/* Embed Code Snippet */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="font-semibold text-ink-900 text-xs">
+                  {embedMethod === "script"
+                    ? "JavaScript Embed Snippet"
+                    : "HTML iFrame Embed Code"}
+                </label>
+                <div className="flex items-center gap-2">
+                  {embedMethod === "iframe" && (
+                    <div className="flex items-center rounded-lg border border-line bg-warm-50 p-0.5 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setIframeVariant("auto")}
+                        className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${
+                          iframeVariant === "auto"
+                            ? "bg-white text-ink-900 shadow-2xs"
+                            : "text-ink-500 hover:text-ink-900"
+                        }`}
+                      >
+                        Auto-Resizing
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIframeVariant("static")}
+                        className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${
+                          iframeVariant === "static"
+                            ? "bg-white text-ink-900 shadow-2xs"
+                            : "text-ink-500 hover:text-ink-900"
+                        }`}
+                      >
+                        Static
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = sharingWidget;
+                      setSharingWidget(null);
+                      handleOpenPreview(target, embedWidgetType);
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:underline"
+                  >
+                    <Eye size={11} />
+                    <span>Interactive Preview</span>
+                  </button>
+                </div>
+              </div>
+
+              {embedMethod === "script" ? (
+                <div className="relative">
+                  <pre className="rounded-xl border border-line bg-warm-100 p-3 font-mono text-[11px] text-ink-900 overflow-x-auto whitespace-pre-wrap break-all leading-normal">
+                    {`<!-- Praise Testimonial Widget -->\n<div data-praise-widget="${sharingWidget.config.slug || sharingWidget.id}"${
+                      embedWidgetType !== sharingWidget.config.widgetType ? ` data-type="${embedWidgetType}"` : ""
+                    }></div>\n<script async src="${origin}/embed.js"></script>`}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const snippet = `<!-- Praise Testimonial Widget -->\n<div data-praise-widget="${sharingWidget.config.slug || sharingWidget.id}"${
+                        embedWidgetType !== sharingWidget.config.widgetType ? ` data-type="${embedWidgetType}"` : ""
+                      }></div>\n<script async src="${origin}/embed.js"></script>`;
+                      navigator.clipboard.writeText(snippet);
+                      setCopiedScript(true);
+                      setTimeout(() => setCopiedScript(false), 2000);
+                      toast.success("Snippet Copied", "JavaScript embed script copied to clipboard.");
+                    }}
+                    className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded-md bg-white border border-line px-2 py-1 text-[11px] font-semibold text-ink-700 hover:bg-warm-50 shadow-2xs"
+                  >
+                    {copiedScript ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                    <span>{copiedScript ? "Copied" : "Copy Code"}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <pre className="rounded-xl border border-line bg-warm-100 p-3 font-mono text-[11px] text-ink-900 overflow-x-auto whitespace-pre-wrap break-all leading-normal">
+                    {(() => {
+                      const wSlug = sharingWidget.config.slug || sharingWidget.id;
+                      const h =
+                        embedWidgetType === "single_quote"
+                          ? "420"
+                          : embedWidgetType === "carousel"
+                          ? "520"
+                          : "700";
+                      if (iframeVariant === "auto") {
+                        return `<!-- Praise Auto-Resizing iFrame Widget -->\n<iframe\n  id="praise-iframe-${wSlug}"\n  src="${origin}/embed/${wSlug}?type=${embedWidgetType}&theme=${sharingWidget.config.theme}"\n  width="100%"\n  height="${h}"\n  frameborder="0"\n  scrolling="no"\n  loading="lazy"\n  title="Customer Testimonials"\n  style="width: 100%; border: none; overflow: hidden; background: transparent; transition: height 0.2s ease;"\n  allow="autoplay; encrypted-media; fullscreen"\n></iframe>\n<script>\n  window.addEventListener("message", function(e) {\n    if (e.data && e.data.type === "praise-resize" && (e.data.widgetId === "${wSlug}" || !e.data.widgetId)) {\n      var el = document.getElementById("praise-iframe-${wSlug}");\n      if (el && typeof e.data.height === "number" && e.data.height > 0) {\n        el.style.height = e.data.height + "px";\n      }\n    }\n  });\n</script>`;
+                      }
+                      return `<!-- Praise Static HTML iFrame Widget -->\n<iframe\n  src="${origin}/embed/${wSlug}?type=${embedWidgetType}&theme=${sharingWidget.config.theme}"\n  width="100%"\n  height="${h}"\n  frameborder="0"\n  scrolling="no"\n  loading="lazy"\n  title="Customer Testimonials"\n  style="width: 100%; border: none; overflow: hidden; background: transparent;"\n  allow="autoplay; encrypted-media; fullscreen"\n></iframe>`;
+                    })()}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const wSlug = sharingWidget.config.slug || sharingWidget.id;
+                      const h =
+                        embedWidgetType === "single_quote"
+                          ? "420"
+                          : embedWidgetType === "carousel"
+                          ? "520"
+                          : "700";
+                      const snippet =
+                        iframeVariant === "auto"
+                          ? `<!-- Praise Auto-Resizing iFrame Widget -->\n<iframe\n  id="praise-iframe-${wSlug}"\n  src="${origin}/embed/${wSlug}?type=${embedWidgetType}&theme=${sharingWidget.config.theme}"\n  width="100%"\n  height="${h}"\n  frameborder="0"\n  scrolling="no"\n  loading="lazy"\n  title="Customer Testimonials"\n  style="width: 100%; border: none; overflow: hidden; background: transparent; transition: height 0.2s ease;"\n  allow="autoplay; encrypted-media; fullscreen"\n></iframe>\n<script>\n  window.addEventListener("message", function(e) {\n    if (e.data && e.data.type === "praise-resize" && (e.data.widgetId === "${wSlug}" || !e.data.widgetId)) {\n      var el = document.getElementById("praise-iframe-${wSlug}");\n      if (el && typeof e.data.height === "number" && e.data.height > 0) {\n        el.style.height = e.data.height + "px";\n      }\n    }\n  });\n</script>`
+                          : `<!-- Praise Static HTML iFrame Widget -->\n<iframe\n  src="${origin}/embed/${wSlug}?type=${embedWidgetType}&theme=${sharingWidget.config.theme}"\n  width="100%"\n  height="${h}"\n  frameborder="0"\n  scrolling="no"\n  loading="lazy"\n  title="Customer Testimonials"\n  style="width: 100%; border: none; overflow: hidden; background: transparent;"\n  allow="autoplay; encrypted-media; fullscreen"\n></iframe>`;
+                      navigator.clipboard.writeText(snippet);
+                      setCopiedEmbed(true);
+                      setTimeout(() => setCopiedEmbed(false), 2000);
+                      toast.success(
+                        "Snippet Copied",
+                        iframeVariant === "auto"
+                          ? "Auto-resizing HTML iFrame code copied to clipboard."
+                          : "Static HTML iFrame code copied to clipboard."
+                      );
+                    }}
+                    className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded-md bg-white border border-line px-2 py-1 text-[11px] font-semibold text-ink-700 hover:bg-warm-50 shadow-2xs"
+                  >
+                    {copiedEmbed ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                    <span>{copiedEmbed ? "Copied" : "Copy Code"}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </ModalDialog>
+      )}
+
+      {/* LIVE INTERACTIVE WIDGET PREVIEW MODAL */}
+      {previewingWidget && (
+        <ModalDialog
+          isOpen={Boolean(previewingWidget)}
+          onClose={() => setPreviewingWidget(null)}
+          title={`Live Widget Preview: "${previewingWidget.name}"`}
+          description="Test and inspect how your approved testimonials render across distinct widget layouts."
+          maxWidth="3xl"
+        >
+          <div className="space-y-4">
+            {/* Layout Switcher Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
+              <div className="flex items-center gap-2">
+                {[
+                  { id: "grid", label: "1. Grid" },
+                  { id: "carousel", label: "2. Carousel" },
+                  { id: "single_quote", label: "3. Single Quote" },
+                  { id: "list", label: "4. List" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setPreviewType(tab.id as WidgetDisplayType)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                      previewType === tab.id
+                        ? "bg-brand-500 text-white shadow-2xs"
+                        : "bg-warm-100 dark:bg-zinc-800 text-ink-700 dark:text-zinc-300 hover:bg-warm-200"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-ink-500">
+                <span className="font-semibold text-ink-800 dark:text-zinc-200">
+                  {previewTestimonials.length}
+                </span>{" "}
+                approved reviews
+              </div>
+            </div>
+
+            {/* Widget Viewport */}
+            <div className="rounded-2xl border border-line dark:border-zinc-800 overflow-hidden bg-warm-50/50 dark:bg-zinc-950 p-2 sm:p-4 max-h-[70vh] overflow-y-auto">
+              <WidgetRenderer
+                type={previewType}
+                testimonials={previewTestimonials}
+                config={{
+                  ...previewingWidget.config,
+                  theme: previewingWidget.config.theme,
+                  accentColor: previewingWidget.config.accentColor,
+                  autoplay: true,
+                  autoplayInterval: 5000,
+                }}
+                isLoading={isLoadingPreview}
+                emptyTitle="No approved testimonials yet"
+                emptyMessage="Submit and approve testimonials in the Testimonials tab to view them live in this widget."
+              />
             </div>
           </div>
         </ModalDialog>

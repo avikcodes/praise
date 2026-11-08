@@ -129,8 +129,9 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
     });
 
     if (testimonial) {
-      // 2. Discover related Wall of Love URL
+      // 2. Discover related Wall of Love URL and branding configuration
       let wallUrl: string | null = null;
+      let showPraiseBranding = true;
       if (testimonial.project) {
         const widget = await prisma.widget.findFirst({
           where: {
@@ -141,6 +142,9 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
         if (widget) {
           const cfg = parseWidgetConfig(widget.configJson, widget.name);
           wallUrl = `/w/${cfg.slug}`;
+          if (cfg.showPraiseBranding === false) {
+            showPraiseBranding = false;
+          }
         } else {
           wallUrl = `/w/${testimonial.project.slug}`;
         }
@@ -196,6 +200,7 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
         wallUrl,
         collectionFormUrl,
         isVerified: testimonial.consentRecords.length > 0,
+        showPraiseBranding,
       };
     }
   } catch (err) {

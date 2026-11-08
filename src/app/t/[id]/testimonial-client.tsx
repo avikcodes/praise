@@ -45,6 +45,7 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
     wallUrl,
     collectionFormUrl,
     isVerified,
+    showPraiseBranding = true,
   } = data;
 
   // Theme state: "light" | "dark"
@@ -467,18 +468,20 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
       )}
 
       {/* Footer */}
-      <footer className={`border-t ${borderLine} py-6 text-center text-xs ${subtleText}`}>
-        <div className="flex items-center justify-center gap-2">
-          <span>Powered by</span>
-          <Link
-            href="/"
-            className="font-bold text-ink-900 hover:text-brand-600 inline-flex items-center gap-1 transition-colors"
-          >
-            <PraiseLogo size="sm" decorative />
-          </Link>
-          <span>&bull; Open Source Testimonial Engine</span>
-        </div>
-      </footer>
+      {showPraiseBranding !== false && (
+        <footer className={`border-t ${borderLine} py-6 text-center text-xs ${subtleText}`}>
+          <div className="flex items-center justify-center gap-2">
+            <span>Powered by</span>
+            <Link
+              href="/"
+              className="font-bold text-ink-900 hover:text-brand-600 inline-flex items-center gap-1 transition-colors"
+            >
+              <PraiseLogo size="sm" decorative />
+            </Link>
+            <span>&bull; Open Source Testimonial Engine</span>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

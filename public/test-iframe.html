@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Praise iFrame Embedding Test Suite</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --brand: #7049D8;
+    }
+
+    body {
+      margin: 0;
+      padding: 30px 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+      color: var(--text);
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      transition: max-width 0.3s ease;
+    }
+
+    .header {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    .header h1 {
+      margin: 0 0 8px 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+
+    .header p {
+      margin: 0 0 16px 0;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      background: #f1f5f9;
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .btn {
+      border: none;
+      background: transparent;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      color: var(--text);
+    }
+
+    .btn.active {
+      background: white;
+      color: var(--brand);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .test-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    .test-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .test-card-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .test-card-meta {
+      font-size: 11px;
+      font-family: monospace;
+      color: var(--text-muted);
+    }
+
+    .iframe-wrapper {
+      position: relative;
+      width: 100%;
+      background: transparent;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    iframe {
+      width: 100%;
+      border: none;
+      display: block;
+      background: transparent;
+      transition: height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .log-panel {
+      background: #0f172a;
+      color: #38bdf8;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      padding: 16px;
+      border-radius: 12px;
+      margin-top: 24px;
+      max-height: 200px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      margin-bottom: 4px;
+    }
+
+    .log-success { color: #4ade80; }
+    .log-info { color: #94a3b8; }
+    .log-warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+
+  <div class="container" id="testContainer">
+    <!-- Header & Controls -->
+    <div class="header">
+      <h1>
+        <span>Praise iFrame Integration Test</span>
+        <span class="badge">Live Verification</span>
+      </h1>
+      <p>
+        Verifies auto-resizing height synchronization, multi-widget isolation, responsive layouts (mobile/tablet/desktop), clean transparent backgrounds, and postMessage origin/schema validation.
+      </p>
+
+      <div class="toolbar">
+        <div>
+          <span style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--text-muted); margin-right: 8px;">Viewport Width:</span>
+          <div class="btn-group" id="viewportGroup">
+            <button class="btn active" onclick="setViewport('100%')">Desktop (100%)</button>
+            <button class="btn" onclick="setViewport('768px')">Tablet (768px)</button>
+            <button class="btn" onclick="setViewport('375px')">Mobile (375px)</button>
+          </div>
+        </div>
+
+        <div>
+          <span style="font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--text-muted); margin-right: 8px;">Theme:</span>
+          <div class="btn-group" id="themeGroup">
+            <button class="btn active" onclick="setTheme('transparent')">Transparent</button>
+            <button class="btn" onclick="setTheme('warm')">Warm</button>
+            <button class="btn" onclick="setTheme('light')">Light</button>
+            <button class="btn" onclick="setTheme('dark')">Dark</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEST 1: Primary Grid / Carousel Widget -->
+    <div class="test-card">
+      <div class="test-card-header">
+        <h2 class="test-card-title">
+          <span>Widget 1: Grid Testimonials</span>
+          <span class="badge">Multi-Widget Test A</span>
+        </h2>
+        <span class="test-card-meta" id="meta-widget-1">Height: Waiting...</span>
+      </div>
+      <div class="iframe-wrapper">
+        <iframe
+          id="praise-iframe-1"
+          src="/embed/demo?type=grid&theme=transparent"
+          width="100%"
+          height="500"
+          frameborder="0"
+          scrolling="no"
+          loading="lazy"
+          title="Customer Testimonials Grid"
+          allow="autoplay; encrypted-media; fullscreen"
+        ></iframe>
+      </div>
+    </div>
+
+    <!-- TEST 2: Secondary Single Quote Spotlight Widget -->
+    <div class="test-card">
+      <div class="test-card-header">
+        <h2 class="test-card-title">
+          <span>Widget 2: Spotlight Quote Card</span>
+          <span class="badge">Multi-Widget Test B</span>
+        </h2>
+        <span class="test-card-meta" id="meta-widget-2">Height: Waiting...</span>
+      </div>
+      <div class="iframe-wrapper">
+        <iframe
+          id="praise-iframe-2"
+          src="/embed/demo?type=single_quote&theme=transparent"
+          width="100%"
+          height="350"
+          frameborder="0"
+          scrolling="no"
+          loading="lazy"
+          title="Spotlight Testimonial Quote"
+          allow="autoplay; encrypted-media; fullscreen"
+        ></iframe>
+      </div>
+    </div>
+
+    <!-- TEST 3: Graceful Failure State (Nonexistent Widget) -->
+    <div class="test-card">
+      <div class="test-card-header">
+        <h2 class="test-card-title">
+          <span>Widget 3: Graceful Failure State</span>
+          <span class="badge">Nonexistent Slug</span>
+        </h2>
+        <span class="test-card-meta" id="meta-widget-3">Height: Waiting...</span>
+      </div>
+      <div class="iframe-wrapper">
+        <iframe
+          id="praise-iframe-3"
+          src="/embed/nonexistent-widget-check?type=grid&theme=transparent"
+          width="100%"
+          height="220"
+          frameborder="0"
+          scrolling="no"
+          loading="lazy"
+          title="Fallback State Test"
+        ></iframe>
+      </div>
+    </div>
+
+    <!-- Live PostMessage Security Log -->
+    <div class="log-panel" id="logPanel">
+      <div class="log-info">[INIT] Praise iFrame Test Suite Initialized. Listening for secure postMessage events...</div>
+    </div>
+  </div>
+
+  <script>
+    // -------------------------------------------------------------
+    // Secure PostMessage Listener & Auto-Resizer
+    // -------------------------------------------------------------
+    var logPanel = document.getElementById("logPanel");
+
+    function log(msg, type) {
+      var entry = document.createElement("div");
+      entry.className = "log-entry " + (type ? "log-" + type : "");
+      var time = new Date().toTimeString().split(" ")[0];
+      entry.textContent = "[" + time + "] " + msg;
+      logPanel.appendChild(entry);
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    var iframes = {
+      1: document.getElementById("praise-iframe-1"),
+      2: document.getElementById("praise-iframe-2"),
+      3: document.getElementById("praise-iframe-3")
+    };
+
+    window.addEventListener("message", function(event) {
+      // 1. Validate Message Content Schema
+      if (!event.data || typeof event.data !== "object") return;
+      if (event.data.type !== "praise-resize") return;
+
+      var height = event.data.height;
+      if (typeof height !== "number" || isNaN(height) || height <= 0 || height > 50000) {
+        log("REJECTED: Malformed height payload: " + height, "warn");
+        return;
+      }
+
+      // 2. Identify Target iFrame by event.source window reference
+      var matchedId = null;
+      for (var id in iframes) {
+        if (iframes[id] && iframes[id].contentWindow === event.source) {
+          matchedId = id;
+          break;
+        }
+      }
+
+      if (matchedId && iframes[matchedId]) {
+        var targetIframe = iframes[matchedId];
+        targetIframe.style.height = height + "px";
+        
+        var metaEl = document.getElementById("meta-widget-" + matchedId);
+        if (metaEl) {
+          metaEl.textContent = "Height: " + height + "px (Synced)";
+          metaEl.style.color = "#059669";
+        }
+
+        log("SUCCESS: Synced Widget " + matchedId + " height -> " + height + "px (Origin: " + (event.origin || "same-origin") + ")", "success");
+      }
+    });
+
+    // Viewport switcher
+    function setViewport(width) {
+      document.getElementById("testContainer").style.maxWidth = width;
+      var buttons = document.getElementById("viewportGroup").getElementsByTagName("button");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].classList.remove("active");
+      }
+      event.target.classList.add("active");
+      log("Resized container viewport to: " + width, "info");
+    }
+
+    // Theme switcher
+    function setTheme(theme) {
+      for (var id in iframes) {
+        if (iframes[id]) {
+          var url = new URL(iframes[id].src, window.location.href);
+          url.searchParams.set("theme", theme);
+          iframes[id].src = url.toString();
+        }
+      }
+      var buttons = document.getElementById("themeGroup").getElementsByTagName("button");
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].classList.remove("active");
+      }
+      event.target.classList.add("active");
+      log("Switched theme for all iframes to: " + theme, "info");
+    }
+  </script>
+</body>
+</html>
+

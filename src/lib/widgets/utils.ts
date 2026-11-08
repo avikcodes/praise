@@ -1,4 +1,5 @@
 import { WallOfLoveConfig } from "@/types/widgets";
+import { validateHexColor } from "@/lib/branding/utils";
 
 export function defaultWallOfLoveConfig(
   name = "Wall of Love",
@@ -11,6 +12,14 @@ export function defaultWallOfLoveConfig(
     layout: "masonry",
     theme: "warm",
     accentColor: "#7049D8",
+    primaryColor: "#7049D8",
+    secondaryColor: "#10B981",
+    backgroundColor: null,
+    textColor: null,
+    cardBorder: "subtle",
+    cardRadius: "medium",
+    cardSpacing: "normal",
+    showPraiseBranding: true,
     ordering: "featured_first",
     showRatings: true,
     showCompany: true,
@@ -41,13 +50,42 @@ export function parseWidgetConfig(
 
   try {
     const parsed = JSON.parse(configJson);
+    const primary = typeof parsed.primaryColor === "string" && parsed.primaryColor.trim()
+      ? validateHexColor(parsed.primaryColor)
+      : typeof parsed.accentColor === "string" && parsed.accentColor.trim()
+      ? validateHexColor(parsed.accentColor)
+      : base.accentColor;
+
     return {
       slug: typeof parsed.slug === "string" && parsed.slug.trim() ? sanitizePublicSlug(parsed.slug) : base.slug,
       title: typeof parsed.title === "string" && parsed.title.trim() ? parsed.title.trim() : base.title,
       description: typeof parsed.description === "string" ? parsed.description.trim() : base.description,
-      layout: ["masonry", "grid", "adaptive"].includes(parsed.layout) ? parsed.layout : base.layout,
-      theme: ["warm", "light", "dark", "auto"].includes(parsed.theme) ? parsed.theme : base.theme,
-      accentColor: typeof parsed.accentColor === "string" && parsed.accentColor.trim() ? parsed.accentColor.trim() : base.accentColor,
+      layout: ["masonry", "grid", "carousel", "single_quote", "list", "adaptive"].includes(parsed.layout) ? parsed.layout : base.layout,
+      widgetType: ["grid", "carousel", "single_quote", "list"].includes(parsed.widgetType) ? parsed.widgetType : undefined,
+      theme: ["warm", "light", "dark", "auto", "transparent"].includes(parsed.theme) ? parsed.theme : base.theme,
+      accentColor: primary,
+      primaryColor: primary,
+      secondaryColor: typeof parsed.secondaryColor === "string" && parsed.secondaryColor.trim()
+        ? validateHexColor(parsed.secondaryColor, "#10B981")
+        : base.secondaryColor,
+      backgroundColor: typeof parsed.backgroundColor === "string" && parsed.backgroundColor.trim()
+        ? validateHexColor(parsed.backgroundColor)
+        : null,
+      textColor: typeof parsed.textColor === "string" && parsed.textColor.trim()
+        ? validateHexColor(parsed.textColor)
+        : null,
+      cardBorder: ["subtle", "prominent", "dashed", "none"].includes(parsed.cardBorder)
+        ? parsed.cardBorder
+        : "subtle",
+      cardRadius: ["none", "small", "medium", "large", "full"].includes(parsed.cardRadius)
+        ? parsed.cardRadius
+        : "medium",
+      cardSpacing: ["compact", "normal", "spacious"].includes(parsed.cardSpacing)
+        ? parsed.cardSpacing
+        : "normal",
+      showPraiseBranding: typeof parsed.showPraiseBranding === "boolean"
+        ? parsed.showPraiseBranding
+        : true,
       ordering: ["featured_first", "highest_rated", "newest", "oldest"].includes(parsed.ordering) ? parsed.ordering : base.ordering,
       showRatings: typeof parsed.showRatings === "boolean" ? parsed.showRatings : base.showRatings,
       showCompany: typeof parsed.showCompany === "boolean" ? parsed.showCompany : base.showCompany,
@@ -66,6 +104,18 @@ export function parseWidgetConfig(
       customLogoUrl: typeof parsed.customLogoUrl === "string" && parsed.customLogoUrl.trim() ? parsed.customLogoUrl.trim() : null,
       allowVideoPlayback: typeof parsed.allowVideoPlayback === "boolean" ? parsed.allowVideoPlayback : base.allowVideoPlayback,
       cardsPerRow: typeof parsed.cardsPerRow === "number" ? parsed.cardsPerRow : 3,
+      autoplay: typeof parsed.autoplay === "boolean" ? parsed.autoplay : false,
+      autoplayInterval: typeof parsed.autoplayInterval === "number" ? parsed.autoplayInterval : 5000,
+      maxItems: typeof parsed.maxItems === "number" ? parsed.maxItems : undefined,
+      selectionMode: ["all", "manual"].includes(parsed.selectionMode) ? parsed.selectionMode : "all",
+      selectedTestimonialIds: Array.isArray(parsed.selectedTestimonialIds)
+        ? parsed.selectedTestimonialIds.filter((id: unknown) => typeof id === "string")
+        : undefined,
+      filterTags: Array.isArray(parsed.filterTags)
+        ? parsed.filterTags.filter((tag: unknown) => typeof tag === "string")
+        : undefined,
+      typographyFamily: ["sans", "serif", "mono", "geometric", "humanist"].includes(parsed.typographyFamily) ? parsed.typographyFamily : "sans",
+      typographySize: ["compact", "normal", "large"].includes(parsed.typographySize) ? parsed.typographySize : "normal",
     };
   } catch {
     return base;
