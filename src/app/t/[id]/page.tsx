@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
 import { parseCustomerMeta } from "@/lib/customers/utils";
@@ -5,6 +6,11 @@ import { parseWidgetConfig } from "@/lib/widgets/utils";
 import { PraiseLogo } from "@/components/brand";
 import { TestimonialClient } from "./testimonial-client";
 import { PublicIndividualTestimonial } from "@/types/public-testimonial";
+import {
+  buildTestimonialMetadata,
+  generateTestimonialJsonLd,
+} from "@/lib/seo/metadata";
+import { canPublishTestimonial } from "@/lib/privacy/consent";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -44,7 +50,7 @@ const fallbackDevTestimonial: PublicIndividualTestimonial = {
   isVerified: true,
 };
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
 
   try {
@@ -54,37 +60,40 @@ export async function generateMetadata({ params }: PageProps) {
         status: "APPROVED",
       },
       include: {
-        customer: { select: { name: true, company: true } },
-        project: { select: { name: true } },
+        customer: { select: { name: true, company: true, title: true, avatarUrl: true } },
+        project: { select: { name: true, slug: true, logoUrl: true } },
+        workspace: { select: { name: true, slug: true, logoUrl: true } },
+        mediaAssets: { select: { type: true, url: true } },
       },
     });
 
     if (testimonial) {
-      const author = testimonial.customer?.name || "Customer";
-      const company = testimonial.customer?.company ? ` (${testimonial.customer.company})` : "";
-      const proj = testimonial.project?.name || "Product";
-      const snippet =
-        testimonial.content.length > 120
-          ? `${testimonial.content.slice(0, 120)}...`
-          : testimonial.content;
-
-      return {
-        title: `${author}${company} on ${proj} — Praise`,
-        description: `"${snippet}"`,
-        openGraph: {
-          title: `${author}'s review of ${proj}`,
-          description: `"${snippet}"`,
+      return buildTestimonialMetadata(
+        {
+          id: testimonial.id,
+          content: testimonial.content,
+          rating: testimonial.rating,
+          submittedAt: testimonial.submittedAt,
+          customer: {
+            name: testimonial.customer?.name || "Customer",
+            company: testimonial.customer?.company || null,
+            title: testimonial.customer?.title || null,
+            avatarUrl: testimonial.customer?.avatarUrl || null,
+          },
+          project: testimonial.project,
+          workspace: testimonial.workspace,
+          mediaAssets: testimonial.mediaAssets,
+          isApproved: true,
         },
-      };
+        id
+      );
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("Error generating testimonial metadata:", err);
   }
 
-  return {
-    title: "Customer Testimonial — Praise",
-    description: "Verified customer review and testimonial.",
-  };
+  // Not found or unapproved => strictly noindex, nofollow
+  return buildTestimonialMetadata(null, id);
 }
 
 export default async function PublicTestimonialPage({ params }: PageProps) {
@@ -94,7 +103,7 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
 
   try {
     // 1. Strictly query ONLY APPROVED testimonials
-    const testimonial = await prisma.testimonial.findFirst({
+    let testimonial = await prisma.testimonial.findFirst({
       where: {
         id,
         status: "APPROVED",
@@ -129,6 +138,16 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
     });
 
     if (testimonial) {
+      // 1b. Verify privacy and consent permissions before rendering public content
+      const permissionCheck = canPublishTestimonial(testimonial);
+      if (!permissionCheck.canPublish) {
+        testimonial = null as unknown as typeof testimonial;
+      }
+    }
+
+    if (testimonial) {
+      const permissionCheck = canPublishTestimonial(testimonial);
+
       // 2. Discover related Wall of Love URL and branding configuration
       let wallUrl: string | null = null;
       let showPraiseBranding = true;
@@ -180,26 +199,28 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
         isFeatured: testimonial.isFeatured,
         submittedAt: testimonial.submittedAt.toISOString(),
         customer: {
-          name: testimonial.customer?.name || "Anonymous",
-          company: testimonial.customer?.company || null,
-          title: testimonial.customer?.title || null,
-          avatarUrl: testimonial.customer?.avatarUrl || null,
+          name: permissionCheck.allowName ? (testimonial.customer?.name || "Verified Customer") : "Verified Customer",
+          company: permissionCheck.allowCompany ? (testimonial.customer?.company || null) : null,
+          title: permissionCheck.allowCompany ? (testimonial.customer?.title || null) : null,
+          avatarUrl: permissionCheck.allowMedia ? (testimonial.customer?.avatarUrl || null) : null,
           website,
         },
         project: testimonial.project,
         workspace: testimonial.workspace,
         tags: testimonial.tags.map((t) => t.tag.name),
-        media: testimonial.mediaAssets.map((m) => ({
-          id: m.id,
-          type: m.type,
-          url: m.url,
-          mimeType: m.mimeType,
-          fileSizeBytes: m.fileSizeBytes,
-          durationSeconds: m.durationSeconds,
-        })),
+        media: permissionCheck.allowMedia
+          ? testimonial.mediaAssets.map((m) => ({
+              id: m.id,
+              type: m.type,
+              url: m.url,
+              mimeType: m.mimeType,
+              fileSizeBytes: m.fileSizeBytes,
+              durationSeconds: m.durationSeconds,
+            }))
+          : [],
         wallUrl,
         collectionFormUrl,
-        isVerified: testimonial.consentRecords.length > 0,
+        isVerified: testimonial.consentRecords.length > 0 && permissionCheck.canPublish,
         showPraiseBranding,
       };
     }
@@ -242,6 +263,26 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
     );
   }
 
-  return <TestimonialClient data={testimonialData} />;
+  const jsonLd = generateTestimonialJsonLd({
+    id: testimonialData.id,
+    content: testimonialData.content,
+    rating: testimonialData.rating,
+    submittedAt: testimonialData.submittedAt,
+    customer: testimonialData.customer,
+    project: testimonialData.project,
+    workspace: testimonialData.workspace,
+    mediaAssets: testimonialData.media,
+    isApproved: true,
+  });
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <TestimonialClient data={testimonialData} />
+    </>
+  );
 }
 

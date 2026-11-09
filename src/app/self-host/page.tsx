@@ -210,10 +210,10 @@ export default function SelfHostPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-ink-900 flex items-center gap-1.5">
-                    <HardDrive size={14} className="text-brand-600" /> Persistent Volume
+                    <HardDrive size={14} className="text-brand-600" /> Persistent Volumes
                   </span>
                   <span className="text-ink-500 font-mono text-[11px]">
-                    /var/lib/praise/data
+                    praise_media &amp; praise_db_data
                   </span>
                 </div>
               </div>
@@ -275,11 +275,12 @@ export default function SelfHostPage() {
               <span className="icon-tile">
                 <FolderArchive size={18} />
               </span>
-              <h3 className="heading-md">Database Backups</h3>
+              <h3 className="heading-md">Automated Backups</h3>
               <p className="muted text-xs leading-relaxed">
-                Back up your structured data using standard PostgreSQL utility
-                tools like <code>pg_dump</code>. You can automate nightly dumps
-                with standard cron jobs or cloud storage backup scripts.
+                Bundle structured PostgreSQL data, customer video files, and
+                cryptographic SHA-256 manifests into verified archives using{" "}
+                <code>npm run backup</code>. Automate nightly snapshots with
+                built-in cron scripts and retention policies.
               </p>
             </div>
 

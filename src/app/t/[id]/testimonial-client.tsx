@@ -184,10 +184,16 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
 
         {/* The Spotlight Card */}
         <article
+          aria-label={`Testimonial from ${customer.name}`}
           className={`rounded-3xl border ${borderLine} ${cardBg} p-8 sm:p-12 relative transition-all ${
             isFeatured ? "ring-2 ring-brand-400/40" : ""
           }`}
         >
+          {/* Hidden Screen-Reader H1 for SEO semantics */}
+          <h1 className="sr-only">
+            {customer.name}&apos;s customer review of {project?.name || workspace.name}
+          </h1>
+
           {/* Decorative Quote Icon Background */}
           <div className="absolute top-6 right-8 opacity-10 pointer-events-none select-none">
             <MessageSquareQuote size={96} />
@@ -197,7 +203,7 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
             {/* Header: Star Rating & Featured Badge */}
             <div className="flex flex-wrap items-center justify-between gap-3">
               {rating && rating > 0 ? (
-                <div className="flex items-center gap-1 text-amber-400">
+                <div className="flex items-center gap-1 text-amber-400" aria-label={`Rating: ${rating} out of 5 stars`}>
                   {[1, 2, 3, 4, 5].map((s) => (
                     <Star
                       key={s}
@@ -227,7 +233,7 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
 
             {/* Video Testimonial Player (if attached) */}
             {videoAsset && (
-              <div className="rounded-2xl overflow-hidden border border-line bg-black shadow-sm">
+              <figure className="rounded-2xl overflow-hidden border border-line bg-black shadow-sm m-0">
                 <TestimonialMedia
                   media={{
                     id: videoAsset.id,
@@ -240,7 +246,7 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
                   canDownload={false}
                   compact={false}
                 />
-              </div>
+              </figure>
             )}
 
             {/* Testimonial Quote */}
@@ -258,24 +264,24 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
             {imageAssets.length > 0 && (
               <div className="pt-2 space-y-3">
                 {imageAssets.map((img) => (
-                  <div
+                  <figure
                     key={img.id}
-                    className="rounded-2xl overflow-hidden border border-line shadow-xs max-h-96"
+                    className="rounded-2xl overflow-hidden border border-line shadow-xs max-h-96 m-0"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img.url}
-                      alt="Customer attachment"
+                      alt={`Photo attached by ${customer.name}`}
                       className="w-full h-auto object-cover"
                       loading="lazy"
                     />
-                  </div>
+                  </figure>
                 ))}
               </div>
             )}
 
             {/* Reviewer Profile Section */}
-            <div className={`pt-6 border-t ${borderLine} flex flex-col sm:flex-row sm:items-center justify-between gap-4`}>
+            <footer className={`pt-6 border-t ${borderLine} flex flex-col sm:flex-row sm:items-center justify-between gap-4`}>
               <div className="flex items-center gap-3.5">
                 {customer.avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -291,8 +297,8 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
                 )}
 
                 <div>
-                  <h3 className="text-base font-bold text-ink-900 flex items-center gap-1.5">
-                    <span>{customer.name}</span>
+                  <h2 className="text-base font-bold text-ink-900 flex items-center gap-1.5">
+                    <cite className="not-italic font-bold">{customer.name}</cite>
                     {customer.website && (
                       <a
                         href={
@@ -308,7 +314,7 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
                         <Globe size={13} />
                       </a>
                     )}
-                  </h3>
+                  </h2>
 
                   {(customer.company || customer.title) && (
                     <div className={`text-xs flex items-center gap-1 mt-0.5 ${subtleText}`}>
@@ -321,13 +327,13 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
 
                   <div className={`text-[11px] flex items-center gap-1.5 mt-1 ${subtleText}`}>
                     <Calendar size={11} />
-                    <span>
+                    <time dateTime={new Date(submittedAt).toISOString()}>
                       {new Date(submittedAt).toLocaleDateString(undefined, {
                         month: "long",
                         day: "numeric",
                         year: "numeric",
                       })}
-                    </span>
+                    </time>
                   </div>
                 </div>
               </div>
@@ -347,7 +353,7 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
                   ))}
                 </div>
               )}
-            </div>
+            </footer>
           </div>
         </article>
 

@@ -10,6 +10,10 @@ import {
   parseCustomerMeta,
   INTERNAL_EMAIL_SUFFIX,
 } from "@/lib/customers/utils";
+import {
+  serializeConsentPayload,
+  StructuredConsentPayload,
+} from "@/lib/privacy/consent";
 
 // Basic email regex validator
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -48,6 +52,11 @@ export async function POST(request: Request) {
       rating = 5,
       type = "TEXT",
       isConsentGranted,
+      consentVersion = "v1.0",
+      permittedPurposes = { publicWebsite: true, socialMedia: false, marketingMaterials: false },
+      mediaConsentGranted,
+      allowNameDisplay = true,
+      allowCompanyDisplay = true,
       customResponses = {},
       mediaAssetId,
       // Anti-abuse tokens
@@ -332,15 +341,32 @@ export async function POST(request: Request) {
         });
       }
 
-      // 7c. Consent record capture
+      // 7c. Explicit Consent record capture with Version 1 structured payload
       if (isConsentGranted) {
+        const payload: StructuredConsentPayload = {
+          version: typeof consentVersion === "string" ? consentVersion : "v1.0",
+          statement: form.consentText || "Permission to publish feedback",
+          permittedPurposes: {
+            publicWebsite: permittedPurposes?.publicWebsite !== false,
+            socialMedia: Boolean(permittedPurposes?.socialMedia),
+            marketingMaterials: Boolean(permittedPurposes?.marketingMaterials),
+          },
+          mediaPermission: mediaConsentGranted !== false,
+          allowNameDisplay: allowNameDisplay !== false,
+          allowCompanyDisplay: allowCompanyDisplay !== false,
+          revokedAt: null,
+          revocationReason: null,
+        };
+
+        const serialized = serializeConsentPayload(payload);
+
         await tx.consentRecord.create({
           data: {
             workspaceId: form.workspaceId,
             testimonialId: testimonial.id,
             customerName: customerName?.trim() || "Respondent",
             customerEmail: cleanEmail,
-            consentText: form.consentText || "Permission to publish feedback",
+            consentText: serialized,
             ipAddress: clientIp,
             userAgent: userAgent.slice(0, 255),
             isConsentGranted: true,

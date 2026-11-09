@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceMember } from "@/lib/auth/guards";
 import { TestimonialStatus } from "@prisma/client";
+import { getStorageEngine } from "@/lib/storage/engine";
+import { recordTombstone } from "@/lib/privacy/consent";
 
 type RouteParams = {
   params: Promise<{ id: string; testimonialId: string }>;
@@ -116,6 +118,34 @@ export async function DELETE(request: Request, context: RouteParams) {
     const { id: workspaceId, testimonialId } = await context.params;
     await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
 
+    // 1. Safe deletion of associated media files from storage disk
+    const engine = getStorageEngine();
+    const mediaAssets = await prisma.mediaAsset.findMany({
+      where: { testimonialId, workspaceId },
+      select: { id: true, localPath: true },
+    });
+
+    for (const asset of mediaAssets) {
+      if (asset.localPath) {
+        await engine.delete(asset.localPath).catch(() => {});
+      }
+      recordTombstone({
+        type: "MEDIA",
+        originalId: asset.id,
+        workspaceId,
+        reason: "CUSTOMER_REQUEST",
+      });
+    }
+
+    // 2. Register tombstone to ensure restored backups never republish this content
+    recordTombstone({
+      type: "TESTIMONIAL",
+      originalId: testimonialId,
+      workspaceId,
+      reason: "CUSTOMER_REQUEST",
+    });
+
+    // 3. Permanently remove testimonial from database
     await prisma.testimonial.delete({
       where: {
         id: testimonialId,
@@ -123,7 +153,10 @@ export async function DELETE(request: Request, context: RouteParams) {
       },
     });
 
-    return NextResponse.json({ success: true, message: "Testimonial deleted successfully." });
+    return NextResponse.json({
+      success: true,
+      message: "Testimonial and associated media permanently deleted.",
+    });
   } catch (error: unknown) {
     const status =
       typeof error === "object" && error && "status" in error

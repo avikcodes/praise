@@ -105,35 +105,70 @@ export default function DeploymentDocsPage() {
           <CodeBlock
             language="yaml"
             filename="docker-compose.yml"
-            code={`version: '3.8'
-
-services:
+            code={`services:
   app:
-    image: ossproject/praise:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: praise:latest
+    container_name: praise-app
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "\${HOST_PORT:-3000}:3000"
     environment:
-      - NEXT_PUBLIC_SITE_URL=https://praise.yourdomain.com
       - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_SITE_URL=\${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      - DATABASE_URL=postgresql://\${POSTGRES_USER:-praise}:\${POSTGRES_PASSWORD}@db:5432/\${POSTGRES_DB:-praise}?schema=public
+      - PRAISE_UPLOAD_DIR=/app/storage/uploads
+      - PRAISE_DATA_DIR=/app/data
     volumes:
-      - praise_media:/app/public/uploads
+      - praise_media:/app/storage/uploads
+      - praise_data:/app/data
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - praise_network
 
   db:
     image: postgres:16-alpine
+    container_name: praise-db
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=praise
-      - POSTGRES_USER=praise
-      - POSTGRES_PASSWORD=replace_with_secure_password
+      - POSTGRES_DB=\${POSTGRES_DB:-praise}
+      - POSTGRES_USER=\${POSTGRES_USER:-praise}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
     volumes:
-      - praise_data:/var/lib/postgresql/data
+      - praise_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \\\$\${POSTGRES_USER:-praise} -d \\\$\${POSTGRES_DB:-praise}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - praise_network
 
 volumes:
+  praise_db_data:
+    name: praise_db_data
+  praise_media:
+    name: praise_media
   praise_data:
-  praise_media:`}
+    name: praise_data
+
+networks:
+  praise_network:
+    name: praise_network
+    driver: bridge`}
           />
 
           <p className="muted text-sm leading-relaxed mb-2">
@@ -156,8 +191,8 @@ volumes:
           </p>
           <ul className="list-disc pl-5 text-sm text-ink-600 space-y-1 mb-4">
             <li>PostgreSQL 15 or 16 is recommended.</li>
-            <li>Database schema migrations run automatically on container boot.</li>
-            <li>Data volume <code>praise_data</code> ensures persistence across restarts.</li>
+            <li>Database schema migrations run automatically on container boot via <code>prisma migrate deploy</code>.</li>
+            <li>Data volume <code>praise_db_data</code> ensures persistence across restarts.</li>
           </ul>
         </section>
 
@@ -166,7 +201,7 @@ volumes:
           <h2 className="heading-lg text-2xl mb-3">4. Media Storage &amp; Volumes</h2>
           <p className="muted text-sm leading-relaxed mb-3">
             Customer video recordings (WebM/MP4) and audio voice notes are stored
-            on disk under the mounted media volume (<code>praise_media</code>).
+            on disk under the mounted media volume (<code>praise_media</code> mapped to <code>/app/storage/uploads</code>).
           </p>
           <div className="surface p-4 text-xs text-ink-700 space-y-2">
             <h4 className="font-semibold text-ink-900">Storage Sizing Guidelines:</h4>
@@ -283,35 +318,54 @@ volumes:
         <section id="backups" className="mb-12 scroll-mt-24">
           <h2 className="heading-lg text-2xl mb-3">9. Creating Database &amp; Media Backups</h2>
           <p className="muted text-sm leading-relaxed mb-4">
-            Back up your structured database records using <code>pg_dump</code>:
+            Praise Core includes unified backup tooling that bundles transactional
+            PostgreSQL database dumps, customer media files (videos, audio, photos),
+            and a cryptographic SHA-256 manifest into a single timestamped archive:
           </p>
 
           <CodeBlock
             language="bash"
             filename="Terminal"
-            code={`# 1. Dump database to a timestamped SQL file
-docker compose exec -T db pg_dump -U praise praise > backup_$(date +%Y%m%d_%H%M%S).sql
+            code={`# 1. Run the automated backup utility
+npm run backup
 
-# 2. Archive media files (video & audio uploads)
-tar -czvf praise_media_$(date +%Y%m%d).tar.gz /var/lib/docker/volumes/praise_media/_data`}
+# Or specify a custom output directory:
+node scripts/backup.mjs --output-dir /opt/praise/backups
+
+# 2. Verify archive integrity and cryptographic checksums
+npm run backup:verify -- backups/praise-backup-2026-11-09T14-30-00Z.tar.gz`}
           />
+
+          <div className="surface p-4 text-xs text-ink-700 space-y-2 mt-4">
+            <h4 className="font-semibold text-ink-900">Automated Crontab Scheduling:</h4>
+            <p className="text-ink-600">
+              Run nightly backups at 02:00 UTC with an automated 14-day retention policy:
+            </p>
+            <pre className="font-mono bg-warm-50 p-2.5 rounded border border-line text-ink-800 text-[11px] overflow-x-auto">
+              0 2 * * * cd /opt/praise &amp;&amp; RETENTION_DAYS=14 ./scripts/backup.sh &gt;&gt; /var/log/praise-backup.log 2&gt;&amp;1
+            </pre>
+          </div>
         </section>
 
         {/* 10. Restoring Backups */}
         <section id="restoring-backups" className="mb-12 scroll-mt-24">
           <h2 className="heading-lg text-2xl mb-3">10. Restoring from Backups</h2>
           <p className="muted text-sm leading-relaxed mb-4">
-            To restore your database and media files to a fresh instance:
+            Restoring completely overwrites the target database and replaces media files.
+            Praise enforces an explicit confirmation guard to prevent accidental data loss:
           </p>
 
           <CodeBlock
             language="bash"
             filename="Terminal"
-            code={`# 1. Restore database schema and records
-docker compose exec -T db psql -U praise -d praise < backup_file.sql
+            code={`# 1. Safe simulation (Dry-Run): validate archive and preview changes without modifying data
+npm run restore -- backups/praise-backup-2026-11-09T14-30-00Z.tar.gz --dry-run
 
-# 2. Extract media uploads into the media volume directory
-tar -xzvf praise_media_backup.tar.gz -C /var/lib/docker/volumes/praise_media/_data`}
+# 2. Execute live restoration with explicit confirmation
+npm run restore -- backups/praise-backup-2026-11-09T14-30-00Z.tar.gz --confirm
+
+# 3. Verify successful restoration via health probe
+curl -s http://localhost:3000/api/health | jq`}
           />
         </section>
 

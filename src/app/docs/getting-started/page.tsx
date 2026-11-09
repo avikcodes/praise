@@ -20,8 +20,10 @@ const tocItems: TocItem[] = [
   { id: "what-is-praise", title: "What is Praise?" },
   { id: "prerequisites", title: "Prerequisites" },
   { id: "installation-overview", title: "Installation Overview" },
+  { id: "docker-compose-quickstart", title: "Docker Compose Quickstart" },
   { id: "local-development", title: "Local Development Setup" },
-  { id: "environment-configuration", title: "Environment Configuration" },
+  { id: "environment-configuration", title: "Environment & Database Setup" },
+  { id: "database-migrations", title: "Database Migrations" },
   { id: "starting-the-application", title: "Starting the Application" },
   { id: "creating-a-workspace", title: "Creating a Workspace & Project" },
   { id: "creating-a-form", title: "Creating a Testimonial Form" },
@@ -115,28 +117,27 @@ export default function GettingStartedDocsPage() {
         <section id="installation-overview" className="mb-12 scroll-mt-24">
           <h2 className="heading-lg text-2xl mb-3">3. Installation Overview</h2>
           <p className="muted text-sm leading-relaxed mb-4">
-            Praise can be run in two primary ways:
+            Praise can be deployed and run in two primary modes:
           </p>
           <ul className="list-disc pl-5 text-sm text-ink-600 space-y-2 mb-4">
             <li>
-              <strong>Local Development:</strong> Running the Next.js application
-              directly with <code>npm run dev</code> for customizing forms,
-              modifying widget styling, or contributing code.
+              <strong>Docker Compose (Recommended):</strong> Spins up the entire
+              production stack in containers (Praise Next.js app, PostgreSQL 16
+              database, and persistent volumes for media and data).
             </li>
             <li>
-              <strong>Docker Compose:</strong> Running the complete production
-              stack (web application, PostgreSQL database, and persistent media
-              volumes) on a remote server or local VM.
+              <strong>Local Node.js Development:</strong> Runs Next.js directly
+              on your host machine using <code>npm run dev</code> for rapid code
+              iteration, custom components, and feature development.
             </li>
           </ul>
         </section>
 
-        {/* 4. Local Development Setup */}
-        <section id="local-development" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">4. Local Development Setup</h2>
+        {/* 4. Docker Compose Quickstart */}
+        <section id="docker-compose-quickstart" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">4. Docker Compose Quickstart</h2>
           <p className="muted text-sm leading-relaxed mb-4">
-            To clone the codebase and start the Next.js development server
-            locally, run:
+            The fastest path to a complete self-hosted Praise instance:
           </p>
 
           <CodeBlock
@@ -146,58 +147,113 @@ export default function GettingStartedDocsPage() {
 git clone https://github.com/ossproject/praise.git
 cd praise
 
-# 2. Install dependencies
-npm install`}
+# 2. Configure environment
+cp .env.example .env
+
+# Edit .env and set NEXT_PUBLIC_SITE_URL and a strong POSTGRES_PASSWORD
+
+# 3. Boot the complete container stack
+docker compose up -d
+
+# 4. Check container health
+docker compose ps
+curl -s http://localhost:3000/api/health | jq`}
           />
 
-          <p className="muted text-xs leading-relaxed mt-2">
-            The dependencies include Next.js 16, React 19, Lucide React icons,
-            and Tailwind CSS v4.
+          <p className="muted text-xs leading-relaxed mt-3">
+            Docker Compose automatically provisions PostgreSQL, applies database
+            migrations via <code>prisma migrate deploy</code>, and mounts
+            persistent volumes (<code>praise_db_data</code> and <code>praise_media</code>).
           </p>
         </section>
 
-        {/* 5. Environment Configuration */}
-        <section id="environment-configuration" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">5. Environment Configuration</h2>
+        {/* 5. Local Development Setup */}
+        <section id="local-development" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">5. Local Development Setup</h2>
           <p className="muted text-sm leading-relaxed mb-4">
-            Praise requires a <code>.env</code> file in the project root to
-            resolve canonical URLs, Open Graph sharing cards, sitemap URLs, and
-            embed script hosts:
+            To run the codebase directly on your workstation with hot reloading:
           </p>
 
           <CodeBlock
             language="bash"
             filename="Terminal"
-            code={`# Copy the example environment file
-cp .env.example .env`}
+            code={`# 1. Install dependencies
+npm install
+
+# 2. Generate Prisma Client
+npx prisma generate`}
           />
 
-          <p className="muted text-sm leading-relaxed mb-2">
-            Inspect the <code>.env</code> file. For local testing, the default
-            is:
+          <p className="muted text-xs leading-relaxed mt-2">
+            Dependencies include Next.js 16, React 19, Prisma Client 6.4, Lucide
+            React, and Tailwind CSS v4.
+          </p>
+        </section>
+
+        {/* 6. Environment & Database Configuration */}
+        <section id="environment-configuration" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">6. Environment &amp; Database Setup</h2>
+          <p className="muted text-sm leading-relaxed mb-4">
+            Praise reads configuration from your root <code>.env</code> file.
+            Copy <code>.env.example</code> to <code>.env</code>:
           </p>
 
           <CodeBlock
             language="env"
             filename=".env"
-            code={`# Absolute origin used for canonical URLs, widget embeds and sitemap.xml
-NEXT_PUBLIC_SITE_URL=http://localhost:3000`}
+            code={`# Canonical public URL (used for widget scripts, public forms & sitemaps)
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+# Host port mapping (default: 3000)
+HOST_PORT=3000
+
+# PostgreSQL credentials
+POSTGRES_DB=praise
+POSTGRES_USER=praise
+POSTGRES_PASSWORD=replace_with_a_secure_random_password
+
+# Prisma Database Connection String
+DATABASE_URL=postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@localhost:5432/\${POSTGRES_DB}?schema=public
+
+# Persistent media upload directory (defaults to storage/uploads)
+PRAISE_UPLOAD_DIR=storage/uploads`}
           />
 
           <div className="surface border-amber-200 bg-amber-50/50 p-4 my-4 flex items-start gap-3 text-xs text-amber-900">
             <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
             <div>
-              <strong>Important for Production:</strong> When deploying to a
-              public server, replace <code>http://localhost:3000</code> with your
-              real production origin (e.g. <code>https://praise.yourdomain.com</code>).
-              Next.js reads this value at build time.
+              <strong>Production Origin:</strong> In production, set{" "}
+              <code>NEXT_PUBLIC_SITE_URL</code> to your public HTTPS domain
+              (e.g. <code>https://praise.yourdomain.com</code>). Embed script loaders,
+              canonical tags, and Open Graph previews rely on this value.
             </div>
           </div>
         </section>
 
-        {/* 6. Starting the Application */}
+        {/* 7. Database Migrations */}
+        <section id="database-migrations" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">7. Database Migrations</h2>
+          <p className="muted text-sm leading-relaxed mb-3">
+            Praise uses Prisma to manage PostgreSQL schema migrations safely:
+          </p>
+
+          <CodeBlock
+            language="bash"
+            filename="Terminal"
+            code={`# For local development: apply pending migrations and regenerate client
+npx prisma migrate dev
+
+# For production / CI: apply schema migrations without resetting database
+npx prisma migrate deploy
+
+# Check migration status
+npx prisma migrate status`}
+          />
+        </section>
+
+        {/* 8. Starting the Application */}
         <section id="starting-the-application" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">6. Starting the Application</h2>
+          <h2 className="heading-lg text-2xl mb-3">8. Starting the Application</h2>
           <p className="muted text-sm leading-relaxed mb-4">
             To start the development server with live reloading:
           </p>
@@ -209,29 +265,28 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000`}
           />
 
           <p className="muted text-sm leading-relaxed mb-4">
-            Open your browser and navigate to{" "}
-            <code>http://localhost:3000</code>. You will see the Praise
-            landing and product pages.
+            Open <code>http://localhost:3000</code> in your browser to view
+            Praise.
           </p>
 
-          <p className="muted text-sm leading-relaxed">
-            To test a production-grade build locally:
+          <p className="muted text-sm leading-relaxed mb-2">
+            To build and run an optimized production build locally:
           </p>
 
           <CodeBlock
             language="bash"
             filename="Terminal"
-            code={`# Build static production assets
+            code={`# 1. Compile production bundle
 npm run build
 
-# Start the optimized Node server
+# 2. Start production server
 npm start`}
           />
         </section>
 
-        {/* 7. Creating a Workspace */}
+        {/* 9. Creating a Workspace */}
         <section id="creating-a-workspace" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">7. Creating a Workspace &amp; Project</h2>
+          <h2 className="heading-lg text-2xl mb-3">9. Creating a Workspace &amp; Project</h2>
           <p className="muted text-sm leading-relaxed mb-3">
             In Praise, a <strong>Workspace</strong> represents your organization
             or account boundary. Within a workspace, you can create one or
@@ -241,23 +296,24 @@ npm start`}
           <ol className="list-decimal pl-5 text-sm text-ink-600 space-y-2 mb-4">
             <li>
               <strong>Initial Admin Registration:</strong> On your first launch,
-              set up your admin account with an email and password.
+              navigate to <code>/signup</code> to register your primary workspace
+              owner account.
             </li>
             <li>
-              <strong>Create Project:</strong> Give your project a recognizable
-              name and upload your brand logo. This logo appears automatically on
-              customer collection forms.
+              <strong>Create Project:</strong> Open the Projects dashboard, give
+              your project a recognizable name, set a primary brand color, and upload
+              your brand logo.
             </li>
           </ol>
         </section>
 
-        {/* 8. Creating a Testimonial Form */}
+        {/* 10. Creating a Testimonial Form */}
         <section id="creating-a-form" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">8. Creating a Testimonial Form</h2>
+          <h2 className="heading-lg text-2xl mb-3">10. Creating a Testimonial Form</h2>
           <p className="muted text-sm leading-relaxed mb-3">
             Collection forms are the public entry point for your customers. Each
-            form generates a unique shareable link (e.g.{" "}
-            <code>https://praise.yourdomain.com/collect/my-product</code>).
+            form generates a unique shareable public slug (e.g.{" "}
+            <code>https://praise.yourdomain.com/p/my-product</code>).
           </p>
           <div className="surface p-4 my-4 space-y-2 text-xs text-ink-700">
             <h4 className="font-semibold text-ink-900">Configurable Options:</h4>
@@ -282,16 +338,16 @@ npm start`}
           </div>
         </section>
 
-        {/* 9. Approving Testimonials */}
+        {/* 11. Approving Testimonials */}
         <section id="approving-testimonials" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">9. Approving Testimonials</h2>
+          <h2 className="heading-lg text-2xl mb-3">11. Approving Testimonials</h2>
           <p className="muted text-sm leading-relaxed mb-3">
             To prevent spam or unintended publication, all customer submissions
             arrive in your dashboard in <strong>Pending</strong> state:
           </p>
           <ol className="list-decimal pl-5 text-sm text-ink-600 space-y-2 mb-4">
             <li>
-              Navigate to the <strong>Moderation Queue</strong>.
+              Navigate to the <strong>Moderation Queue</strong> (<code>/dashboard/testimonials</code>).
             </li>
             <li>
               Click on a submission to inspect the written quote, listen to the
@@ -308,9 +364,9 @@ npm start`}
           </ol>
         </section>
 
-        {/* 10. Publishing a Widget */}
+        {/* 12. Publishing a Widget */}
         <section id="publishing-a-widget" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">10. Publishing a Widget</h2>
+          <h2 className="heading-lg text-2xl mb-3">12. Publishing a Widget</h2>
           <p className="muted text-sm leading-relaxed mb-3">
             Once testimonials are approved, generate an embed snippet to place on
             your website:
@@ -342,10 +398,10 @@ npm start`}
           </p>
         </section>
 
-        {/* 11. Common Installation Problems */}
+        {/* 13. Common Installation Problems */}
         <section id="common-problems" className="mb-12 scroll-mt-24">
           <h2 className="heading-lg text-2xl mb-3">
-            11. Common Installation Problems
+            13. Common Installation Problems
           </h2>
 
           <div className="space-y-4 my-4">

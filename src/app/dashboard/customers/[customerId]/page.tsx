@@ -28,7 +28,6 @@ import {
   XCircle,
 } from "lucide-react";
 import { ModalDialog } from "@/components/dashboard/modal-dialog";
-import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
 
@@ -139,6 +138,7 @@ export default function CustomerDetailPage({ params }: PageProps) {
 
   // Delete Dialog State
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"anonymize" | "purge">("anonymize");
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
@@ -271,14 +271,15 @@ export default function CustomerDetailPage({ params }: PageProps) {
     }
   };
 
-  // Delete customer profile
+  // Delete customer profile or complete privacy erasure
   const handleDeleteCustomer = async () => {
     if (!workspaceId || !customer) return;
     setIsDeleting(true);
 
     try {
+      const purgeQuery = deleteMode === "purge" ? "?purge=true" : "";
       const res = await fetch(
-        `/api/workspaces/${workspaceId}/customers/${customer.id}`,
+        `/api/workspaces/${workspaceId}/customers/${customer.id}${purgeQuery}`,
         { method: "DELETE" }
       );
 
@@ -288,8 +289,8 @@ export default function CustomerDetailPage({ params }: PageProps) {
       }
 
       toast.success(
-        "Customer Deleted",
-        data.message || "Customer profile was removed. Testimonials were retained."
+        deleteMode === "purge" ? "Customer & Data Erased" : "Customer Profile Deleted",
+        data.message || "Customer data deleted successfully."
       );
       router.push("/dashboard/customers");
     } catch (err: unknown) {
@@ -943,16 +944,78 @@ export default function CustomerDetailPage({ params }: PageProps) {
         </form>
       </ModalDialog>
 
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
-        onConfirm={handleDeleteCustomer}
-        title="Delete Customer Profile"
-        message={`Are you sure you want to delete "${customer.name}"? All associated testimonials (${customer.stats.totalSubmissions} submission${customer.stats.totalSubmissions === 1 ? "" : "s"}) will remain safely preserved in your workspace.`}
-        confirmLabel={isDeleting ? "Deleting..." : "Delete Customer"}
-        isDestructive
-      />
+      {/* Customer Deletion & Privacy Erasure Dialog */}
+      {isDeleteDialogOpen && (
+        <ModalDialog
+          isOpen={isDeleteDialogOpen}
+          onClose={() => setIsDeleteDialogOpen(false)}
+          title={`Delete Customer "${customer.name}"`}
+          description="Select data deletion policy for this customer profile and associated submissions."
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="space-y-2">
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-line bg-warm-50/50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="delMode"
+                  value="anonymize"
+                  checked={deleteMode === "anonymize"}
+                  onChange={() => setDeleteMode("anonymize")}
+                  className="mt-0.5 text-brand-600 focus:ring-brand-500"
+                />
+                <div className="space-y-0.5">
+                  <span className="font-semibold text-ink-900 block">
+                    Anonymize and Remove Customer Profile
+                  </span>
+                  <span className="text-[11px] text-ink-600 block leading-relaxed">
+                    Deletes the customer profile, email, and private notes. Existing testimonials ({customer.stats.totalSubmissions}) are retained with personal attribution removed.
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-rose-200 bg-rose-50/40 cursor-pointer">
+                <input
+                  type="radio"
+                  name="delMode"
+                  value="purge"
+                  checked={deleteMode === "purge"}
+                  onChange={() => setDeleteMode("purge")}
+                  className="mt-0.5 text-rose-600 focus:ring-rose-500"
+                />
+                <div className="space-y-0.5">
+                  <span className="font-semibold text-rose-900 block">
+                    Complete Privacy Erasure (Purge All Data)
+                  </span>
+                  <span className="text-[11px] text-rose-700 block leading-relaxed">
+                    Permanently purges the customer profile AND permanently deletes all {customer.stats.totalSubmissions} associated testimonials and physical media files from disk.
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+              <button
+                type="button"
+                onClick={() => setIsDeleteDialogOpen(false)}
+                className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-medium text-ink-700 hover:bg-warm-100"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteCustomer}
+                disabled={isDeleting}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {isDeleting && <Loader2 size={13} className="animate-spin" />}
+                <span>{deleteMode === "purge" ? "Purge All Data" : "Delete Profile"}</span>
+              </button>
+            </div>
+          </div>
+        </ModalDialog>
+      )}
     </div>
   );
 }

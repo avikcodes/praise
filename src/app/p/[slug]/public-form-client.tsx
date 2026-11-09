@@ -4,10 +4,14 @@ import { useEffect, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   FileText,
+  Info,
   Loader2,
   Mic,
   RotateCcw,
+  ShieldCheck,
   Star,
   Video,
 } from "lucide-react";
@@ -38,7 +42,11 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
   const [customerCompany, setCustomerCompany] = useState("");
   const [customerTitle, setCustomerTitle] = useState("");
   const [customerWebsite, setCustomerWebsite] = useState("");
-  const [isConsentGranted, setIsConsentGranted] = useState(true);
+  const [isConsentGranted, setIsConsentGranted] = useState(false);
+  const [isMediaConsentGranted, setIsMediaConsentGranted] = useState(true);
+  const [allowSocialMedia, setAllowSocialMedia] = useState(false);
+  const [allowMarketingMaterials, setAllowMarketingMaterials] = useState(false);
+  const [showConsentDetails, setShowConsentDetails] = useState(false);
   const [customResponses, setCustomResponses] = useState<Record<string, unknown>>({});
 
   // Media upload state
@@ -54,6 +62,30 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
   const [countdown, setCountdown] = useState(4);
 
   const accentColor = form.accentColor || "#7049D8";
+
+  // Track Form View (privacy-conscious, session-deduplicated)
+  useEffect(() => {
+    if (typeof window === "undefined" || !form.id) return;
+    try {
+      const sessionKey = `praise_form_view_${form.id}`;
+      if (sessionStorage.getItem(sessionKey)) return;
+      sessionStorage.setItem(sessionKey, "1");
+
+      fetch("/api/analytics/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: "FORM",
+          targetId: form.id,
+          eventType: "VIEW",
+          workspaceId: form.workspaceId,
+          slug: form.slug,
+        }),
+      }).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, [form.id, form.workspaceId, form.slug]);
 
   // Redirect countdown when redirectUrl is provided
   useEffect(() => {
@@ -180,6 +212,15 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
           rating,
           type: activeTab === "video" ? "VIDEO" : activeTab === "audio" ? "AUDIO" : "TEXT",
           isConsentGranted,
+          consentVersion: "v1.0",
+          permittedPurposes: {
+            publicWebsite: true,
+            socialMedia: allowSocialMedia,
+            marketingMaterials: allowMarketingMaterials,
+          },
+          mediaConsentGranted: Boolean(uploadedVideoAsset || uploadedAvatarAsset) ? isMediaConsentGranted : true,
+          allowNameDisplay: true,
+          allowCompanyDisplay: true,
           customResponses,
           mediaAssetId: uploadedVideoAsset?.id || null,
           // Anti-abuse parameters
@@ -1011,27 +1052,100 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
               </div>
             )}
 
-            {/* Consent Disclosure Checkbox */}
+            {/* Privacy & Consent Disclosure Section */}
             {form.collectConsent && (
-              <div className="pt-2 border-t border-line/60">
-                <label className="flex items-start gap-2.5 text-xs text-ink-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isConsentGranted}
-                    aria-invalid={Boolean(fieldErrors.consent)}
-                    onChange={(e) => {
-                      setIsConsentGranted(e.target.checked);
-                      clearFieldError("consent");
-                    }}
-                    className="mt-0.5 h-4 w-4 rounded border-line text-brand-600 focus:ring-brand-500"
-                  />
-                  <span className="leading-relaxed">
-                    {form.consentText}{" "}
-                    {form.consentRequired && <span className="text-rose-500">*</span>}
-                  </span>
-                </label>
+              <div className="pt-3 border-t border-line/70 space-y-3">
+                <div className="rounded-xl border border-line bg-warm-50/50 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-ink-900 flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-brand-600" />
+                      <span>Permission &amp; Consent</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-ink-400 bg-white px-2 py-0.5 rounded border border-line">
+                      v1.0
+                    </span>
+                  </div>
+
+                  {/* Primary Publishing Agreement Checkbox */}
+                  <label className="flex items-start gap-2.5 text-xs text-ink-800 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isConsentGranted}
+                      aria-invalid={Boolean(fieldErrors.consent)}
+                      onChange={(e) => {
+                        setIsConsentGranted(e.target.checked);
+                        clearFieldError("consent");
+                      }}
+                      className="mt-0.5 h-4 w-4 rounded border-line text-brand-600 focus:ring-brand-500"
+                    />
+                    <span className="leading-relaxed">
+                      {form.consentText ||
+                        "I grant permission to use my feedback, name, and company on public websites and testimonial widgets."}{" "}
+                      {form.consentRequired && <span className="text-rose-500 font-semibold">*</span>}
+                    </span>
+                  </label>
+
+                  {/* Separate Media Permission Checkbox (shown when photo avatar or video is uploaded) */}
+                  {(activeTab === "video" || Boolean(uploadedAvatarAsset) || Boolean(uploadedVideoAsset)) && (
+                    <label className="flex items-start gap-2.5 text-xs text-ink-800 cursor-pointer pt-1 border-t border-line/40">
+                      <input
+                        type="checkbox"
+                        checked={isMediaConsentGranted}
+                        onChange={(e) => setIsMediaConsentGranted(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-line text-brand-600 focus:ring-brand-500"
+                      />
+                      <span className="leading-relaxed">
+                        I specifically grant permission to display my submitted photo or video recording alongside my feedback.
+                      </span>
+                    </label>
+                  )}
+
+                  {/* Optional Granular Usage Controls */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowConsentDetails((prev) => !prev)}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-brand-600 hover:text-brand-700"
+                    >
+                      {showConsentDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      <span>{showConsentDetails ? "Hide usage details" : "Customize permitted usage"}</span>
+                    </button>
+
+                    {showConsentDetails && (
+                      <div className="mt-2.5 space-y-2 rounded-lg border border-line bg-white p-3 text-[11px] text-ink-700 animate-in fade-in duration-200">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowSocialMedia}
+                            onChange={(e) => setAllowSocialMedia(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-line text-brand-600 focus:ring-brand-500"
+                          />
+                          <span>Allow quoting snippet on official social media channels</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={allowMarketingMaterials}
+                            onChange={(e) => setAllowMarketingMaterials(e.target.checked)}
+                            className="h-3.5 w-3.5 rounded border-line text-brand-600 focus:ring-brand-500"
+                          />
+                          <span>Allow featuring in marketing presentations or case studies</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Privacy Disclosure Notice */}
+                  <div className="flex items-start gap-1.5 pt-1 text-[11px] text-ink-500 border-t border-line/40 leading-relaxed">
+                    <Info size={13} className="shrink-0 mt-0.5 text-ink-400" />
+                    <span>
+                      You may request withdrawal of your consent or deletion of your testimonial at any time. We never sell contact information.
+                    </span>
+                  </div>
+                </div>
+
                 {fieldErrors.consent && (
-                  <p className="text-[11px] text-rose-600 font-medium mt-1">
+                  <p className="text-[11px] text-rose-600 font-medium px-1">
                     {fieldErrors.consent}
                   </p>
                 )}

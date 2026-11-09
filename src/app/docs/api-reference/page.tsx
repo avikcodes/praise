@@ -1,5 +1,5 @@
 import {
-  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { Breadcrumbs } from "@/components/docs/breadcrumbs";
 import { TableOfContents, type TocItem } from "@/components/docs/toc";
@@ -9,25 +9,27 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { pageMetadata } from "@/lib/site";
 
 export const metadata = pageMetadata({
-  title: "REST API Reference & Webhook Specifications",
+  title: "REST API Reference — Praise Core v1",
   description:
-    "Complete technical reference for the Praise REST API: bearer authentication, projects, forms, testimonials, tag taxonomy, pagination, error schemas, and webhook events.",
+    "Complete technical reference for the Praise Core v1 REST API: Bearer authentication, API key management, projects, forms, testimonials, customers, tags, widgets, pagination, error schemas, and public endpoints.",
   path: "/docs/api-reference",
 });
 
 const tocItems: TocItem[] = [
-  { id: "api-overview", title: "API Overview & Architecture" },
-  { id: "specification-status", title: "Implementation Status" },
-  { id: "authentication", title: "Authentication & API Keys" },
-  { id: "workspaces-projects", title: "Workspaces & Projects" },
-  { id: "forms-endpoints", title: "Collection Forms Endpoints" },
-  { id: "testimonials-endpoints", title: "Testimonials Endpoints" },
-  { id: "tags-taxonomy", title: "Tags & Categorization" },
-  { id: "widgets-endpoints", title: "Widgets Configuration" },
-  { id: "pagination-filtering", title: "Pagination & Filtering" },
-  { id: "webhooks", title: "Event Webhooks Specification" },
-  { id: "error-handling", title: "Error Handling & Status Codes" },
-  { id: "security-permissions", title: "Security & Permissions" },
+  { id: "api-overview", title: "1. API Overview & Architecture" },
+  { id: "authentication", title: "2. Authentication & Key Types" },
+  { id: "api-keys-management", title: "3. API Key Management" },
+  { id: "workspaces-endpoints", title: "4. Workspaces Endpoints" },
+  { id: "projects-endpoints", title: "5. Projects Endpoints" },
+  { id: "customers-endpoints", title: "6. Customers Endpoints" },
+  { id: "forms-endpoints", title: "7. Collection Forms Endpoints" },
+  { id: "testimonials-endpoints", title: "8. Testimonials Endpoints" },
+  { id: "tags-taxonomy", title: "9. Tags & Taxonomy" },
+  { id: "widgets-endpoints", title: "10. Widgets Configuration" },
+  { id: "public-endpoints", title: "11. Approved Public Endpoints" },
+  { id: "pagination-filtering", title: "12. Pagination, Filtering & Sorting" },
+  { id: "rate-limiting", title: "13. Rate Limiting & Headers" },
+  { id: "error-handling", title: "14. Error Handling & Status Codes" },
 ];
 
 export default function ApiReferenceDocsPage() {
@@ -44,13 +46,13 @@ export default function ApiReferenceDocsPage() {
         <div className="mb-8 border-b border-line pb-6">
           <div className="flex items-center gap-2 mb-2">
             <span className="eyebrow">Developer Reference</span>
-            <StatusBadge status="planned" label="Planned Specification" />
+            <StatusBadge status="available" label="Implemented v1.0" />
           </div>
           <h1 className="display text-3xl sm:text-4xl">REST API Reference</h1>
           <p className="lead mt-3 text-base text-ink-600">
-            Comprehensive specifications for programmatically querying
-            testimonials, submitting customer feedback, managing tag taxonomies,
-            and receiving real-time webhook events.
+            Official technical documentation for the Praise Core REST API.
+            Manage workspaces, projects, forms, customer profiles, moderated
+            testimonials, tag taxonomies, and widget configurations over HTTPS.
           </p>
         </div>
 
@@ -58,154 +60,302 @@ export default function ApiReferenceDocsPage() {
         <section id="api-overview" className="mb-12 scroll-mt-24">
           <h2 className="heading-lg text-2xl mb-3">1. API Overview &amp; Architecture</h2>
           <p className="muted text-sm leading-relaxed mb-4">
-            The Praise REST API is designed to follow strict REST principles over
-            HTTPS. Requests accept and return standard <code>application/json</code>{" "}
-            payloads (with <code>multipart/form-data</code> supported for video
-            and audio media uploads).
+            The Praise REST API is rooted under <code>/api/v1</code>. All
+            management operations enforce strict multi-tenant workspace isolation,
+            cryptographic Bearer token authorization, input validation, and
+            sliding-window rate limiting.
           </p>
-          <div className="surface p-4 font-mono text-xs text-ink-800 space-y-1">
+
+          <div className="surface p-4 font-mono text-xs text-ink-800 space-y-1.5 my-4">
             <div>
               <span className="text-ink-400">Base URL: </span>
               <code>https://praise.yourdomain.com/api/v1</code>
             </div>
             <div>
               <span className="text-ink-400">Data Format: </span>
-              <code>JSON (UTF-8)</code>
+              <code>JSON (application/json; charset=utf-8)</code>
             </div>
             <div>
-              <span className="text-ink-400">Protocol: </span>
-              <code>HTTPS (TLS 1.2 / 1.3 required)</code>
+              <span className="text-ink-400">API Version: </span>
+              <code>2026-11-01 (reflected in API-Version header)</code>
+            </div>
+            <div>
+              <span className="text-ink-400">Security: </span>
+              <code>TLS 1.2 / 1.3, SHA-256 key hashing, scoped RBAC</code>
             </div>
           </div>
         </section>
 
-        {/* 2. Implementation Status */}
-        <section id="specification-status" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">2. Implementation Status</h2>
-          <div className="surface border-amber-200 bg-amber-50/50 p-4 mb-4 flex items-start gap-3 text-xs text-amber-900 leading-relaxed">
-            <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
-            <div>
-              <strong>Planned Specification Notice:</strong> The endpoints and
-              webhook schemas detailed on this page represent Praise&apos;s
-              target API architecture for the Complete Release milestone. They
-              are documented here to allow developers to design integrations in
-              advance. Check the Praise GitHub repository for merge status.
-            </div>
-          </div>
-        </section>
-
-        {/* 3. Authentication & API Keys */}
+        {/* 2. Authentication & Key Types */}
         <section id="authentication" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">3. Authentication &amp; API Keys</h2>
+          <h2 className="heading-lg text-2xl mb-3">2. Authentication &amp; Key Types</h2>
           <p className="muted text-sm leading-relaxed mb-3">
-            All API requests must include a Bearer token in the{" "}
-            <code>Authorization</code> HTTP header:
+            Authenticate management requests by supplying a Bearer token in the{" "}
+            <code>Authorization</code> HTTP header (or via <code>X-API-Key</code>):
           </p>
 
           <CodeBlock
             language="http"
             filename="HTTP Header"
-            code={`Authorization: Bearer praise_live_sk_89f1a23e74b901a`}
+            code={`Authorization: Bearer praise_live_sk_7b31048e91f041289c8491024ab71c89`}
           />
 
-          <h3 className="heading-md text-base mt-6 mb-2">Key Types</h3>
+          <h3 className="heading-md text-base mt-6 mb-2">Supported Key Types</h3>
           <div className="surface overflow-hidden divide-y divide-line text-xs">
             <div className="p-3.5 flex items-start gap-3">
-              <span className="font-semibold text-ink-900 w-32 shrink-0">
-                Publishable Key
-              </span>
-              <span className="text-ink-600">
-                Prefix <code>praise_pk_</code> &bull; Safe to expose in frontend
-                browsers. Grants read-only access to approved public testimonials.
-              </span>
-            </div>
-            <div className="p-3.5 flex items-start gap-3">
-              <span className="font-semibold text-ink-900 w-32 shrink-0">
+              <span className="font-semibold text-ink-900 w-36 shrink-0">
                 Secret Live Key
               </span>
               <span className="text-ink-600">
-                Prefix <code>praise_live_sk_</code> &bull; Keep on your secure backend.
-                Grants read/write access to moderate, create, and purge records.
+                Prefix <code>praise_live_sk_</code> &bull; Keep on secure servers.
+                Carries workspace roles (<code>OWNER</code>, <code>ADMIN</code>, <code>MEMBER</code>).
+                Enables full read/write management of testimonials, forms, and customers.
+              </span>
+            </div>
+            <div className="p-3.5 flex items-start gap-3">
+              <span className="font-semibold text-ink-900 w-36 shrink-0">
+                Publishable Key
+              </span>
+              <span className="text-ink-600">
+                Prefix <code>praise_pk_</code> &bull; Safe to expose in frontend script
+                tags and client bundles. Grants read-only access to approved public
+                testimonials only. Disallows all write mutations and private routes.
               </span>
             </div>
           </div>
         </section>
 
-        {/* 4. Workspaces & Projects */}
-        <section id="workspaces-projects" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">4. Workspaces &amp; Projects</h2>
+        {/* 3. API Key Management */}
+        <section id="api-keys-management" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">3. API Key Management</h2>
           <p className="muted text-sm leading-relaxed mb-3">
-            Projects segment your testimonial data. All testimonials belong to a
-            specific project ID.
+            Administrators and workspace owners can programmatically provision and
+            revoke API keys:
           </p>
 
-          <CodeBlock
-            language="bash"
-            filename="cURL Request"
-            code={`curl -X GET https://praise.yourdomain.com/api/v1/projects \\
-  -H "Authorization: Bearer praise_live_sk_..."`}
-          />
+          <div className="space-y-4 my-4">
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-emerald-700">GET </span>
+              <code>/api/v1/auth/keys</code>
+              <span className="text-ink-400 ml-2">— List active keys (showing keyPrefix, role, createdAt)</span>
+            </div>
 
-          <p className="muted text-xs leading-relaxed mt-2 mb-2">
-            Example Response:
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-brand-700">POST </span>
+              <code>/api/v1/auth/keys</code>
+              <span className="text-ink-400 ml-2">— Generate a new API key</span>
+            </div>
+
+            <CodeBlock
+              language="bash"
+              filename="cURL: Create API Key"
+              code={`curl -X POST https://praise.yourdomain.com/api/v1/auth/keys \\
+  -H "Authorization: Bearer praise_live_sk_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "Production Widget Loader",
+    "type": "PUBLISHABLE",
+    "role": "MEMBER"
+  }'`}
+            />
+
+            <CodeBlock
+              language="json"
+              filename="Response 201 Created (Raw key returned once)"
+              code={`{
+  "data": {
+    "id": "cm3b1x8...",
+    "name": "Production Widget Loader",
+    "keyPrefix": "praise_pk_8f29...",
+    "key": "praise_pk_8f29c4179e8a0028e3b1c78e90a2bf41",
+    "type": "PUBLISHABLE",
+    "role": "MEMBER",
+    "createdAt": "2026-11-09T18:00:00.000Z"
+  }
+}`}
+            />
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-rose-700">DELETE </span>
+              <code>/api/v1/auth/keys/:id</code>
+              <span className="text-ink-400 ml-2">— Revoke and purge an API key</span>
+            </div>
+          </div>
+        </section>
+
+        {/* 4. Workspaces Endpoints */}
+        <section id="workspaces-endpoints" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">4. Workspaces Endpoints</h2>
+          <p className="muted text-sm leading-relaxed mb-3">
+            Inspect or update the primary workspace tied to the authenticated key:
           </p>
+
+          <div className="surface p-3 font-mono text-xs mb-3">
+            <span className="font-bold text-emerald-700">GET </span>
+            <code>/api/v1/workspaces</code>
+          </div>
 
           <CodeBlock
             language="json"
             filename="Response 200 OK"
             code={`{
-  "data": [
-    {
-      "id": "proj_a901ff23",
-      "name": "Cloud Core Product",
-      "slug": "cloud-core",
-      "created_at": "2026-03-01T12:00:00Z"
+  "data": {
+    "id": "ws_cuid1234",
+    "name": "Acme SaaS",
+    "slug": "acme-saas",
+    "logoUrl": "https://praise.yourdomain.com/storage/uploads/logo.png",
+    "createdAt": "2026-11-01T10:00:00.000Z",
+    "updatedAt": "2026-11-09T14:00:00.000Z",
+    "stats": {
+      "projectsCount": 3,
+      "testimonialsCount": 42,
+      "customersCount": 38,
+      "widgetsCount": 4
     }
-  ]
+  }
 }`}
           />
         </section>
 
-        {/* 5. Forms Endpoints */}
-        <section id="forms-endpoints" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">5. Collection Forms Endpoints</h2>
+        {/* 5. Projects Endpoints */}
+        <section id="projects-endpoints" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">5. Projects Endpoints</h2>
           <p className="muted text-sm leading-relaxed mb-3">
-            Query form configurations or submit feedback from custom mobile or
-            web applications:
+            Projects segment forms, testimonials, and widgets:
           </p>
 
-          <div className="surface p-4 text-xs font-mono mb-4">
-            <span className="font-bold text-emerald-700">GET </span>
-            <code>/api/v1/forms/:form_id</code>
-          </div>
+          <div className="space-y-4 my-4">
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-emerald-700">GET </span>
+              <code>/api/v1/projects?page=1&amp;limit=20&amp;sort_by=createdAt&amp;order=desc</code>
+            </div>
 
-          <CodeBlock
-            language="json"
-            filename="Response"
-            code={`{
-  "id": "form_87c2b4a1",
-  "project_id": "proj_a901ff23",
-  "title": "Share your thoughts on Cloud Core",
-  "allow_video": true,
-  "allow_audio": true,
-  "allow_text": true,
-  "require_rating": true,
-  "questions": [
-    "What specific problem did Cloud Core solve for you?",
-    "How likely are you to recommend us to a colleague?"
-  ]
-}`}
-          />
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-brand-700">POST </span>
+              <code>/api/v1/projects</code>
+            </div>
+
+            <CodeBlock
+              language="bash"
+              filename="cURL: Create Project"
+              code={`curl -X POST https://praise.yourdomain.com/api/v1/projects \\
+  -H "Authorization: Bearer praise_live_sk_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "Cloud Core Platform",
+    "slug": "cloud-core",
+    "description": "Enterprise cloud telemetry suite",
+    "color": "#7049D8"
+  }'`}
+            />
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-amber-700">PATCH </span>
+              <code>/api/v1/projects/:id</code>
+            </div>
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-rose-700">DELETE </span>
+              <code>/api/v1/projects/:id</code>
+            </div>
+          </div>
         </section>
 
-        {/* 6. Testimonials Endpoints */}
-        <section id="testimonials-endpoints" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">6. Testimonials Endpoints</h2>
+        {/* 6. Customers Endpoints */}
+        <section id="customers-endpoints" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">6. Customers Endpoints</h2>
+          <p className="muted text-sm leading-relaxed mb-3">
+            Manage respondent and customer profiles. Customer email addresses are
+            accessible through this management API, but strictly stripped from
+            public feeds:
+          </p>
 
-          <h3 className="heading-md text-base mt-4 mb-2">List Approved Testimonials</h3>
+          <div className="space-y-4 my-4">
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-emerald-700">GET </span>
+              <code>/api/v1/customers?search=scale&amp;page=1&amp;limit=20</code>
+            </div>
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-brand-700">POST </span>
+              <code>/api/v1/customers</code>
+            </div>
+
+            <CodeBlock
+              language="json"
+              filename="Response 200 OK (Single Customer)"
+              code={`{
+  "data": {
+    "id": "cust_8820f1",
+    "workspaceId": "ws_cuid1234",
+    "name": "Sarah Jenkins",
+    "email": "sarah@scaleflow.example",
+    "company": "ScaleFlow",
+    "title": "VP of Product",
+    "avatarUrl": "https://praise.yourdomain.com/storage/uploads/avatars/sarah.jpg",
+    "socialHandle": "@sarahjenkins",
+    "createdAt": "2026-11-05T12:00:00.000Z",
+    "updatedAt": "2026-11-09T08:00:00.000Z"
+  }
+}`}
+            />
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-amber-700">PATCH </span>
+              <code>/api/v1/customers/:id</code>
+            </div>
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-rose-700">DELETE </span>
+              <code>/api/v1/customers/:id</code>
+            </div>
+          </div>
+        </section>
+
+        {/* 7. Collection Forms Endpoints */}
+        <section id="forms-endpoints" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">7. Collection Forms Endpoints</h2>
+          <p className="muted text-sm leading-relaxed mb-3">
+            Programmatically query form setups or create new feedback intake links:
+          </p>
+
+          <div className="space-y-4 my-4">
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-emerald-700">GET </span>
+              <code>/api/v1/forms?project_id=proj_a901</code>
+            </div>
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-brand-700">POST </span>
+              <code>/api/v1/forms</code>
+            </div>
+
+            <CodeBlock
+              language="json"
+              filename="Request Payload: POST /api/v1/forms"
+              code={`{
+  "projectId": "proj_a901",
+  "title": "Feedback for Cloud Core",
+  "slug": "cloud-core-feedback",
+  "headerPrompt": "How did Cloud Core help your engineering workflow?",
+  "thankYouMessage": "Thank you for supporting our open-source journey!",
+  "allowVideo": true,
+  "allowAudio": true,
+  "allowText": true,
+  "maxVideoDurationSeconds": 120
+}`}
+            />
+          </div>
+        </section>
+
+        {/* 8. Testimonials Endpoints */}
+        <section id="testimonials-endpoints" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">8. Testimonials Endpoints</h2>
+
+          <h3 className="heading-md text-base mt-4 mb-2">Query &amp; Filter Testimonials</h3>
           <div className="surface p-3 font-mono text-xs mb-3">
             <span className="font-bold text-emerald-700">GET </span>
-            <code>/api/v1/testimonials?project_id=proj_a901ff23&amp;status=approved</code>
+            <code>/api/v1/testimonials?status=APPROVED&amp;min_rating=4&amp;type=VIDEO&amp;page=1&amp;limit=20</code>
           </div>
 
           <CodeBlock
@@ -215,160 +365,266 @@ export default function ApiReferenceDocsPage() {
   "data": [
     {
       "id": "tst_1289fe40",
-      "format": "video",
-      "status": "approved",
+      "workspaceId": "ws_cuid1234",
+      "projectId": "proj_a901",
+      "content": "Praise gave us full ownership over our video testimonial assets.",
       "rating": 5,
+      "type": "VIDEO",
+      "status": "APPROVED",
+      "isFeatured": true,
+      "submittedAt": "2026-11-06T15:30:00.000Z",
       "customer": {
+        "id": "cust_8820f1",
         "name": "Sarah Jenkins",
-        "title": "Head of Product",
+        "email": "sarah@scaleflow.example",
         "company": "ScaleFlow",
-        "avatar_url": "https://praise.yourdomain.com/media/avatars/sarah.jpg"
+        "title": "VP of Product",
+        "avatarUrl": "https://praise.yourdomain.com/storage/uploads/avatars/sarah.jpg"
       },
-      "media": {
-        "video_url": "https://praise.yourdomain.com/media/videos/tst_1289fe40.mp4",
-        "duration_seconds": 42
-      },
-      "text": "Praise gave us full ownership over our video assets without ongoing per-video fees.",
-      "tags": ["enterprise", "speed"],
-      "created_at": "2026-03-15T09:30:00Z"
+      "mediaAssets": [
+        {
+          "id": "med_99a1",
+          "type": "VIDEO",
+          "url": "/api/media/med_99a1",
+          "mimeType": "video/webm",
+          "fileSizeBytes": 12450000,
+          "durationSeconds": 42
+        }
+      ],
+      "tags": [
+        { "id": "tag_enterprise", "name": "Enterprise", "slug": "enterprise", "color": "#7049D8" }
+      ]
     }
   ],
   "meta": {
-    "total": 48,
+    "total": 42,
     "page": 1,
-    "limit": 20
+    "limit": 20,
+    "totalPages": 3,
+    "hasMore": true
   }
 }`}
           />
 
-          <h3 className="heading-md text-base mt-6 mb-2">Create New Submission</h3>
+          <h3 className="heading-md text-base mt-6 mb-2">Moderate / Update Testimonial</h3>
           <div className="surface p-3 font-mono text-xs mb-3">
-            <span className="font-bold text-brand-700">POST </span>
-            <code>/api/v1/testimonials</code>
+            <span className="font-bold text-amber-700">PATCH </span>
+            <code>/api/v1/testimonials/:id</code>
           </div>
-          <p className="muted text-xs leading-relaxed mb-2">
-            Accepts <code>multipart/form-data</code>. New submissions always land
-            in <code>pending</code> status awaiting manual moderation.
-          </p>
+
+          <CodeBlock
+            language="json"
+            filename="Request: Approve & Feature Testimonial"
+            code={`{
+  "status": "APPROVED",
+  "isFeatured": true,
+  "tagIds": ["tag_enterprise", "tag_speed"]
+}`}
+          />
         </section>
 
-        {/* 7. Tags Taxonomy */}
+        {/* 9. Tags & Taxonomy */}
         <section id="tags-taxonomy" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">7. Tags &amp; Categorization</h2>
+          <h2 className="heading-lg text-2xl mb-3">9. Tags &amp; Taxonomy</h2>
           <p className="muted text-sm leading-relaxed mb-3">
-            Tags allow you to organize testimonials across marketing campaigns
-            and feature blocks:
+            Organize testimonials across feature tags and marketing campaigns:
           </p>
-          <div className="surface p-3 font-mono text-xs mb-3">
-            <span className="font-bold text-emerald-700">GET </span>
-            <code>/api/v1/tags</code>
+
+          <div className="space-y-4 my-4">
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-emerald-700">GET </span>
+              <code>/api/v1/tags</code>
+            </div>
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-brand-700">POST </span>
+              <code>/api/v1/tags</code>
+            </div>
+
+            <CodeBlock
+              language="json"
+              filename="Request: Create Tag"
+              code={`{
+  "name": "Cost Reduction",
+  "slug": "cost-reduction",
+  "color": "#059669"
+}`}
+            />
           </div>
-          <p className="muted text-xs">
-            Query tags attached to a project to feed dynamic filter dropdowns on
-            custom marketing pages.
-          </p>
         </section>
 
-        {/* 8. Widgets Configuration */}
+        {/* 10. Widgets Configuration */}
         <section id="widgets-endpoints" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">8. Widgets Configuration Endpoint</h2>
+          <h2 className="heading-lg text-2xl mb-3">10. Widgets Configuration</h2>
           <p className="muted text-sm leading-relaxed mb-3">
-            The embed runtime fetches its layout configuration and theme colors
-            via:
+            Configure embeddable presentation units (Grid, Carousel, Quote Card,
+            List, Wall of Love):
           </p>
-          <div className="surface p-3 font-mono text-xs mb-3">
-            <span className="font-bold text-emerald-700">GET </span>
-            <code>/api/v1/widgets/:widget_id</code>
+
+          <div className="space-y-4 my-4">
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-emerald-700">GET </span>
+              <code>/api/v1/widgets?project_id=proj_a901</code>
+            </div>
+
+            <div className="surface p-3 font-mono text-xs">
+              <span className="font-bold text-brand-700">POST </span>
+              <code>/api/v1/widgets</code>
+            </div>
+
+            <CodeBlock
+              language="json"
+              filename="Request: Create Grid Widget"
+              code={`{
+  "name": "Homepage Proof Grid",
+  "projectId": "proj_a901",
+  "type": "GRID",
+  "theme": "LIGHT",
+  "config": {
+    "columns": 3,
+    "showRatings": true,
+    "showAvatars": true,
+    "minRating": 4,
+    "tag": "enterprise"
+  }
+}`}
+            />
           </div>
-          <p className="muted text-xs leading-relaxed">
-            Returns layout mode (<code>grid</code>, <code>carousel</code>,{" "}
-            <code>quote</code>, <code>wall</code>), color tokens, and matching
-            approved testimonials.
-          </p>
         </section>
 
-        {/* 9. Pagination & Filtering */}
+        {/* 11. Approved Public Endpoints */}
+        <section id="public-endpoints" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">11. Approved Public Endpoints</h2>
+          <p className="muted text-sm leading-relaxed mb-3">
+            Safe, public read-only endpoints designed for websites, widgets, and
+            mobile apps. Accessible via publishable keys (<code>praise_pk_...</code>)
+            or public workspace/project slugs:
+          </p>
+
+          <div className="surface border-emerald-200 bg-emerald-50/50 p-4 mb-4 flex items-start gap-3 text-xs text-emerald-900 leading-relaxed">
+            <CheckCircle2 size={16} className="text-emerald-600 mt-0.5 shrink-0" />
+            <div>
+              <strong>Privacy Guarantee:</strong> Public endpoints return ONLY
+              testimonials marked <code>APPROVED</code>. Customer email addresses,
+              private notes, submitter IPs, and unapproved records are strictly
+              filtered out at the database query level.
+            </div>
+          </div>
+
+          <div className="surface p-3 font-mono text-xs mb-3">
+            <span className="font-bold text-emerald-700">GET </span>
+            <code>/api/v1/public/testimonials?project_slug=cloud-core&amp;min_rating=5</code>
+          </div>
+
+          <CodeBlock
+            language="json"
+            filename="Response 200 OK (Public Sanitized Payload)"
+            code={`{
+  "data": [
+    {
+      "id": "tst_1289fe40",
+      "content": "Praise gave us full ownership over our video testimonial assets.",
+      "rating": 5,
+      "type": "VIDEO",
+      "isFeatured": true,
+      "submittedAt": "2026-11-06T15:30:00.000Z",
+      "customer": {
+        "name": "Sarah Jenkins",
+        "company": "ScaleFlow",
+        "title": "VP of Product",
+        "avatarUrl": "https://praise.yourdomain.com/storage/uploads/avatars/sarah.jpg",
+        "socialHandle": "@sarahjenkins"
+      },
+      "media": [
+        {
+          "id": "med_99a1",
+          "type": "VIDEO",
+          "url": "/api/media/med_99a1",
+          "mimeType": "video/webm",
+          "fileSizeBytes": 12450000,
+          "durationSeconds": 42
+        }
+      ],
+      "tags": ["Enterprise"]
+    }
+  ],
+  "meta": {
+    "total": 12,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 1,
+    "hasMore": false
+  }
+}`}
+          />
+        </section>
+
+        {/* 12. Pagination, Filtering & Sorting */}
         <section id="pagination-filtering" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">9. Pagination &amp; Filtering</h2>
+          <h2 className="heading-lg text-2xl mb-3">12. Pagination, Filtering &amp; Sorting</h2>
           <p className="muted text-sm leading-relaxed mb-3">
             All listing endpoints support standard query parameters:
           </p>
+
           <div className="surface overflow-hidden divide-y divide-line text-xs">
             <div className="p-3 flex items-start gap-3">
-              <code className="font-semibold text-ink-900 w-28 shrink-0">page</code>
-              <span className="text-ink-600">Integer (default: 1)</span>
+              <code className="font-semibold text-ink-900 w-32 shrink-0">page</code>
+              <span className="text-ink-600">Page number (default: <code>1</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <code className="font-semibold text-ink-900 w-28 shrink-0">limit</code>
-              <span className="text-ink-600">Integer between 1 and 100 (default: 20)</span>
+              <code className="font-semibold text-ink-900 w-32 shrink-0">limit</code>
+              <span className="text-ink-600">Items per page (default: <code>20</code>, maximum: <code>100</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <code className="font-semibold text-ink-900 w-28 shrink-0">format</code>
-              <span className="text-ink-600">Filter by &apos;text&apos;, &apos;video&apos;, or &apos;audio&apos;</span>
+              <code className="font-semibold text-ink-900 w-32 shrink-0">sort_by</code>
+              <span className="text-ink-600">Field name (e.g. <code>submittedAt</code>, <code>rating</code>, <code>createdAt</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <code className="font-semibold text-ink-900 w-28 shrink-0">tag</code>
-              <span className="text-ink-600">Filter by tag string (e.g. &apos;pricing&apos;)</span>
+              <code className="font-semibold text-ink-900 w-32 shrink-0">order</code>
+              <span className="text-ink-600">Sort direction: <code>asc</code> or <code>desc</code> (default: <code>desc</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <code className="font-semibold text-ink-900 w-28 shrink-0">min_rating</code>
-              <span className="text-ink-600">Integer from 1 to 5</span>
+              <code className="font-semibold text-ink-900 w-32 shrink-0">search / q</code>
+              <span className="text-ink-600">Full-text case-insensitive query across text and customer names.</span>
             </div>
           </div>
         </section>
 
-        {/* 10. Webhooks */}
-        <section id="webhooks" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">10. Event Webhooks Specification</h2>
+        {/* 13. Rate Limiting */}
+        <section id="rate-limiting" className="mb-12 scroll-mt-24">
+          <h2 className="heading-lg text-2xl mb-3">13. Rate Limiting &amp; Headers</h2>
           <p className="muted text-sm leading-relaxed mb-3">
-            Praise dispatches HTTP POST requests to configured webhook URLs when
-            events happen in your workspace:
+            Requests are tracked using an in-memory sliding window limiter:
           </p>
-
-          <CodeBlock
-            language="json"
-            filename="Webhook Payload: testimonial.created"
-            code={`{
-  "event": "testimonial.created",
-  "id": "evt_9918bc32",
-  "timestamp": "2026-03-20T14:12:00Z",
-  "data": {
-    "id": "tst_1289fe40",
-    "project_id": "proj_a901ff23",
-    "status": "pending",
-    "format": "video",
-    "customer": {
-      "name": "Sarah Jenkins",
-      "company": "ScaleFlow"
-    }
-  }
-}`}
-          />
-
-          <h3 className="heading-md text-base mt-6 mb-2">Supported Events</h3>
           <ul className="list-disc pl-5 text-xs text-ink-600 space-y-1 mb-4">
-            <li><code>testimonial.created</code> &bull; Customer submitted feedback</li>
-            <li><code>testimonial.approved</code> &bull; Moderator approved submission</li>
-            <li><code>testimonial.rejected</code> &bull; Moderator rejected submission</li>
-            <li><code>testimonial.deleted</code> &bull; Testimonial and media purged</li>
+            <li><strong>Secret Keys:</strong> 120 requests per minute.</li>
+            <li><strong>Publishable Keys:</strong> 300 requests per minute.</li>
           </ul>
+
+          <p className="muted text-xs leading-relaxed mb-2">Every response returns rate status headers:</p>
+          <CodeBlock
+            language="http"
+            filename="Rate Limiting Headers"
+            code={`X-RateLimit-Limit: 120
+X-RateLimit-Remaining: 118
+X-RateLimit-Reset: 54`}
+          />
         </section>
 
-        {/* 11. Error Handling */}
+        {/* 14. Error Handling */}
         <section id="error-handling" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">11. Error Handling &amp; Status Codes</h2>
+          <h2 className="heading-lg text-2xl mb-3">14. Error Handling &amp; Status Codes</h2>
           <p className="muted text-sm leading-relaxed mb-3">
-            Praise uses standard HTTP status codes. Error responses follow a
-            predictable JSON schema:
+            All error responses follow a deterministic JSON format:
           </p>
 
           <CodeBlock
             language="json"
-            filename="Response 401 Unauthorized"
+            filename="Standard Error Envelope"
             code={`{
   "error": {
     "code": "invalid_api_key",
-    "message": "The provided API key is invalid or has been revoked.",
+    "message": "The provided API key is invalid, inactive, or has expired.",
     "status": 401
   }
 }`}
@@ -376,48 +632,30 @@ export default function ApiReferenceDocsPage() {
 
           <div className="surface overflow-hidden divide-y divide-line text-xs my-4">
             <div className="p-3 flex items-start gap-3">
-              <span className="font-mono font-semibold text-ink-900 w-16">200 / 201</span>
-              <span className="text-ink-600">Success / Resource Created</span>
+              <span className="font-mono font-semibold text-ink-900 w-20 shrink-0">400</span>
+              <span className="text-ink-600">Bad Request (<code>validation_error</code>, <code>invalid_request</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <span className="font-mono font-semibold text-ink-900 w-16">400</span>
-              <span className="text-ink-600">Bad Request (validation error)</span>
+              <span className="font-mono font-semibold text-ink-900 w-20 shrink-0">401</span>
+              <span className="text-ink-600">Unauthorized (<code>unauthorized</code>, <code>invalid_api_key</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <span className="font-mono font-semibold text-ink-900 w-16">401</span>
-              <span className="text-ink-600">Unauthorized (missing or invalid Bearer key)</span>
+              <span className="font-mono font-semibold text-ink-900 w-20 shrink-0">403</span>
+              <span className="text-ink-600">Forbidden (<code>forbidden</code>, <code>insufficient_permissions</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <span className="font-mono font-semibold text-ink-900 w-16">404</span>
-              <span className="text-ink-600">Resource Not Found</span>
+              <span className="font-mono font-semibold text-ink-900 w-20 shrink-0">404</span>
+              <span className="text-ink-600">Not Found (<code>project_not_found</code>, <code>testimonial_not_found</code>).</span>
             </div>
             <div className="p-3 flex items-start gap-3">
-              <span className="font-mono font-semibold text-ink-900 w-16">413</span>
-              <span className="text-ink-600">Payload Too Large (media file exceeds limit)</span>
+              <span className="font-mono font-semibold text-ink-900 w-20 shrink-0">409</span>
+              <span className="text-ink-600">Conflict (<code>slug_conflict</code>).</span>
+            </div>
+            <div className="p-3 flex items-start gap-3">
+              <span className="font-mono font-semibold text-ink-900 w-20 shrink-0">429</span>
+              <span className="text-ink-600">Too Many Requests (<code>rate_limit_exceeded</code>). Returns <code>Retry-After</code>.</span>
             </div>
           </div>
-        </section>
-
-        {/* 12. Security & Permissions */}
-        <section id="security-permissions" className="mb-12 scroll-mt-24">
-          <h2 className="heading-lg text-2xl mb-3">12. Security &amp; Permissions</h2>
-          <p className="muted text-sm leading-relaxed mb-3">
-            API keys inherit the role permissions of their creator:
-          </p>
-          <ul className="list-disc pl-5 text-xs text-ink-600 space-y-1 mb-4">
-            <li>
-              <strong>Admin Keys:</strong> Can create new projects, revoke API
-              keys, and permanently delete submissions.
-            </li>
-            <li>
-              <strong>Moderator Keys:</strong> Can list testimonials, approve or
-              hide items, and assign tags.
-            </li>
-            <li>
-              <strong>Publishable Keys:</strong> Read-only access to approved
-              testimonials matching specific widget layouts.
-            </li>
-          </ul>
         </section>
 
         <DocsPager

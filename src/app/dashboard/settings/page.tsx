@@ -1,16 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
+  ArrowDownToLine,
   Building,
   Check,
   Copy,
   Database,
+  FileCheck2,
   HardDrive,
   Key,
   Loader2,
   Save,
+  ShieldCheck,
   Trash2,
   Users,
 } from "lucide-react";
@@ -129,7 +133,33 @@ export default function SettingsPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const toast = useToast();
+
+  const handleExportWorkspace = async () => {
+    if (!activeWorkspace) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch(`/api/workspaces/${activeWorkspace.id}/export?format=zip`);
+      if (!res.ok) {
+        throw new Error("Failed to generate export archive");
+      }
+      const blob = await res.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `praise-workspace-${activeWorkspace.slug}-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      toast.success("Workspace Export Ready", "Downloaded archive with all records and verifiable consent audit ledger.");
+    } catch (err: unknown) {
+      toast.error("Export Failed", err instanceof Error ? err.message : "Error exporting workspace");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleSaveGeneral = async (name: string, slug: string) => {
     if (!activeWorkspace) return;
@@ -345,7 +375,72 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* 5. Danger Zone */}
+      {/* 5. Privacy, Consent & Data Portability */}
+      <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-line pb-4">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck size={18} className="text-brand-600" />
+            <div>
+              <h2 className="text-sm sm:text-base font-semibold text-ink-900">
+                Privacy, Consent &amp; Data Exports
+              </h2>
+              <p className="text-xs text-ink-500">
+                Manage respondent consent policies, audit records, and full workspace data archives.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/projects"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
+          >
+            <FileCheck2 size={13} />
+            <span>Open Consent Ledger</span>
+          </Link>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 text-xs">
+          <div className="rounded-xl border border-line bg-warm-50/50 p-3.5 space-y-1.5">
+            <span className="font-semibold text-ink-900 block text-xs">
+              Verifiable Consent Records
+            </span>
+            <p className="text-[11px] text-ink-600 leading-relaxed">
+              Every customer submission records explicit consent checkboxes, versioning, network verification tokens, and granular usage rights.
+            </p>
+            <Link
+              href="/dashboard/projects"
+              className="inline-block text-[11px] font-medium text-brand-600 hover:underline pt-1"
+            >
+              Review captured records in Projects &rarr;
+            </Link>
+          </div>
+
+          <div className="rounded-xl border border-line bg-warm-50/50 p-3.5 space-y-1.5">
+            <span className="font-semibold text-ink-900 block text-xs">
+              Complete Workspace Export
+            </span>
+            <p className="text-[11px] text-ink-600 leading-relaxed">
+              Download a comprehensive ZIP archive with all workspace data, projects, customer profiles, forms, media files, and CSV/JSON consent ledgers.
+            </p>
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={handleExportWorkspace}
+                disabled={isExporting}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-800 hover:bg-warm-100 transition-colors disabled:opacity-50 shadow-2xs"
+              >
+                {isExporting ? (
+                  <Loader2 size={13} className="animate-spin text-brand-600" />
+                ) : (
+                  <ArrowDownToLine size={13} className="text-brand-600" />
+                )}
+                <span>{isExporting ? "Exporting..." : "Download Full Workspace Archive"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 6. Danger Zone */}
       <div className="rounded-2xl border border-rose-200 bg-rose-50/20 p-5 sm:p-6 shadow-xs space-y-4">
         <h2 className="text-sm font-semibold text-rose-900 flex items-center gap-2">
           <AlertTriangle size={16} className="text-rose-600" />

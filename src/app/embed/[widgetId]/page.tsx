@@ -4,6 +4,7 @@ import { parseCustomerMeta } from "@/lib/customers/utils";
 import { parseWidgetConfig } from "@/lib/widgets/utils";
 import { WidgetRenderer, EmbedResizeListener } from "@/components/widgets";
 import { PublicTestimonialCard } from "@/types/widgets";
+import { recordAnalyticsEvent } from "@/lib/analytics/tracker";
 import { Prisma } from "@prisma/client";
 
 type EmbedPageProps = {
@@ -232,6 +233,15 @@ export default async function EmbedWidgetPage({
           })),
         };
       });
+
+      if (widget?.id && !widget.id.startsWith("proj-")) {
+        recordAnalyticsEvent({
+          workspaceId: widget.workspaceId,
+          targetType: "WIDGET",
+          targetId: widget.id,
+          eventType: "VIEW",
+        }).catch(() => {});
+      }
     }
   } catch (err) {
     console.error("Embed query error:", err);

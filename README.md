@@ -121,37 +121,246 @@ schema because none are established.
 3. After deploy, submit `sitemap.xml` in Google Search Console / Bing
    Webmaster Tools and validate the JSON-LD with the Schema Markup Validator.
 
-## Getting Started
+## Self-Hosting with Docker Compose
 
-First, run the development server:
+Praise Core is engineered to run seamlessly on your own infrastructure with Docker Compose and PostgreSQL.
+
+### Prerequisites
+
+- **Docker Engine** (v20.10 or newer)
+- **Docker Compose** (v2.0 or newer)
+- **Minimum hardware**: 1 vCPU, 1 GB RAM, 10 GB disk space (2 vCPU, 2-4 GB RAM recommended for video testimonials)
+
+---
+
+### Quick Start (Production)
+
+1. **Clone the repository and prepare your environment file:**
+
+   ```bash
+   git clone https://github.com/your-org/praise.git
+   cd praise
+   cp .env.example .env
+   ```
+
+2. **Configure your environment secrets:**
+
+   Edit `.env` and set a strong database password and your public domain:
+
+   ```bash
+   # Generate a random 24-byte hex password
+   openssl rand -hex 24
+   ```
+
+   In `.env`:
+   ```dotenv
+   NEXT_PUBLIC_SITE_URL=https://praise.yourdomain.com
+   POSTGRES_PASSWORD=your_generated_secure_password
+   ```
+
+3. **Start the stack in detached background mode:**
+
+   ```bash
+   docker compose up -d
+   ```
+
+   This launches:
+   - **PostgreSQL 16** (`praise-db`) with an internal health check.
+   - **Praise Core** (`praise-app`) on port `3000`.
+   - Automatic execution of database migrations via `prisma migrate deploy`.
+   - Named volumes: `praise_db_data` (database) and `praise_media` (videos/photos).
+
+4. **Verify container health:**
+
+   ```bash
+   docker compose ps
+   curl -s http://localhost:3000/api/health | jq
+   ```
+
+5. **Create your initial administrator account:**
+
+   Open `http://localhost:3000/signup` (or `https://praise.yourdomain.com/signup`) in your browser to create your primary workspace owner account.
+
+---
+
+### Architecture & Persistence
+
+| Service | Container | Internal Port | Description |
+| --- | --- | --- | --- |
+| `app` | `praise-app` | `3000` | Next.js 16 production web application & API |
+| `db` | `praise-db` | `5432` | PostgreSQL 16 Alpine relational database |
+
+#### Persistent Volumes
+
+Praise writes all permanent state to dedicated host volumes:
+
+- **`praise_db_data`** (`/var/lib/postgresql/data`): All user accounts, workspaces, forms, testimonials, and verifiable consent audit ledgers.
+- **`praise_media`** (`/app/storage/uploads`): All customer video recordings (MP4/WebM), voice clips, and avatar photos.
+- **`praise_data`** (`/app/data`): Internal disaster recovery tombstones and analytics cache.
+
+Data survives container restarts, updates, and recreations (`docker compose down && docker compose up -d`).
+
+---
+
+### Database Migration Workflow
+
+Migrations are automatically applied on container boot by `docker-entrypoint.sh` using:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npx prisma migrate deploy
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+To run migrations manually or check migration status inside the running container:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+docker compose exec app npx prisma migrate status
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+### Backup & Disaster Recovery
 
-To learn more about Next.js, take a look at the following resources:
+Praise Core includes production-grade backup and restore tooling designed to create unified, timestamped, cryptographically verified `.tar.gz` archives. Each archive bundles:
+- Complete PostgreSQL transactional database dump (`database.sql`).
+- All customer media files (video recordings, voice clips, avatar photos).
+- Cryptographic `manifest.json` containing per-file SHA-256 checksums, table statistics, and environment metadata.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+#### 1. Create a Backup
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Run the automated backup tool:
 
-## Deploy on Vercel
+```bash
+npm run backup
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Or execute directly with custom options:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+node scripts/backup.mjs --output-dir ./backups
+```
+
+This generates a timestamped archive: `backups/praise-backup-YYYY-MM-DDTHH-mm-ssZ.tar.gz`.
+
+*Available Options:*
+- `--output-dir <path>`: Target directory for backup archives (default: `./backups`).
+- `--docker`: Force database dump via `docker compose exec -T db pg_dump`.
+- `--no-media`: Exclude uploaded media files (database-only backup).
+- `--media-dir <path>`: Specify custom local media storage directory.
+
+#### 2. Verify Archive Integrity
+
+Before storing or replicating archives, verify that the archive is uncorrupted and that all database records and media files match their declared SHA-256 checksums:
+
+```bash
+npm run backup:verify -- backups/praise-backup-2026-11-09T14-30-00Z.tar.gz
+```
+
+Add `--verbose` to list individual media files and tables.
+
+#### 3. Restore from Backup
+
+> [!WARNING]
+> Restoring a backup is a destructive operation that completely overwrites existing database tables and replaces matching media files on disk. Praise enforces an explicit safety confirmation guard.
+
+##### Pre-flight Simulation (Dry-Run):
+Inspect the archive, validate all checksums, and preview the restoration plan without modifying any live data:
+
+```bash
+npm run restore -- backups/praise-backup-2026-11-09T14-30-00Z.tar.gz --dry-run
+```
+
+##### Live Restoration:
+Execute the restoration by providing the explicit `--confirm` flag:
+
+```bash
+npm run restore -- backups/praise-backup-2026-11-09T14-30-00Z.tar.gz --confirm
+```
+
+##### How to Verify a Successful Restore:
+1. **Automated Verification:** The restore tool computes SHA-256 checksums of restored files against the manifest upon completion.
+2. **Probe System Health:**
+   ```bash
+   curl -s http://localhost:3000/api/health | jq
+   ```
+3. **Inspect Database Migration Status:**
+   ```bash
+   docker compose exec app npx prisma migrate status
+   ```
+
+#### 4. Automated Backup Scheduling (Cron)
+
+To schedule nightly automated backups at 02:00 UTC with a 14-day retention policy:
+
+```bash
+# Open server crontab
+crontab -e
+
+# Add nightly Praise backup job:
+0 2 * * * cd /opt/praise && RETENTION_DAYS=14 ./scripts/backup.sh >> /var/log/praise-backup.log 2>&1
+```
+
+#### 5. Off-Site Replication Best Practices
+
+Never store backups exclusively on the host server disk. Replicate verified archives to remote object storage (AWS S3, Cloudflare R2, or Backblaze B2):
+
+```bash
+# Using AWS CLI:
+aws s3 sync /opt/praise/backups/ s3://my-praise-backups/ --exclude "*" --include "praise-backup-*.tar.gz"
+
+# Or using rclone:
+rclone sync /opt/praise/backups/ remote:praise-backups/
+```
+
+---
+
+### Reverse Proxy Configuration
+
+For production HTTPS termination, place Praise behind a reverse proxy such as Caddy or Nginx.
+
+#### Caddy Example (`Caddyfile`):
+
+```caddy
+praise.yourdomain.com {
+    reverse_proxy 127.0.0.1:3000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
+```
+
+#### Nginx Example:
+
+```nginx
+server {
+    server_name praise.yourdomain.com;
+    listen 80;
+    listen 443 ssl http2;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50M;
+    }
+}
+```
+
+---
+
+### Local Development (without Docker)
+
+If developing locally without containers:
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to view the development server.

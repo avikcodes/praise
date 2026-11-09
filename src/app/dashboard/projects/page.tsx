@@ -13,6 +13,7 @@ import {
   Loader2,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
   Tag,
   Trash2,
@@ -29,9 +30,10 @@ import {
   ProjectItem,
   useWorkspace,
 } from "@/components/dashboard/workspace-context";
+import { PrivacyConsentTab } from "@/components/dashboard/privacy-consent-tab";
 
 export default function ProjectsPage() {
-  const [activeTab, setActiveTab] = useState<"projects" | "brands">("projects");
+  const [activeTab, setActiveTab] = useState<"projects" | "brands" | "privacy">("projects");
   const [search, setSearch] = useState("");
   const toast = useToast();
 
@@ -356,6 +358,19 @@ export default function ProjectsPage() {
               {brands.length}
             </span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("privacy")}
+            className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+              activeTab === "privacy"
+                ? "bg-warm-200 text-ink-900 shadow-2xs"
+                : "text-ink-600 hover:bg-warm-100 hover:text-ink-900"
+            }`}
+          >
+            <ShieldCheck size={14} className={activeTab === "privacy" ? "text-brand-600" : "text-ink-400"} />
+            <span>Privacy &amp; Consent</span>
+          </button>
         </div>
 
         {/* Workspace Quick Indicator */}
@@ -369,27 +384,29 @@ export default function ProjectsPage() {
       </div>
 
       {/* Search and stats bar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={14} className="absolute left-3 top-2.5 text-ink-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={
-              activeTab === "projects"
-                ? "Search projects by name, slug, or brand..."
-                : "Search brands by name, website, or slug..."
-            }
-            className="w-full rounded-lg border border-line bg-white pl-9 pr-3 py-1.5 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
+      {activeTab !== "privacy" && (
+        <div className="flex items-center justify-between gap-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={14} className="absolute left-3 top-2.5 text-ink-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={
+                activeTab === "projects"
+                  ? "Search projects by name, slug, or brand..."
+                  : "Search brands by name, website, or slug..."
+              }
+              className="w-full rounded-lg border border-line bg-white pl-9 pr-3 py-1.5 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
+          <span className="text-xs text-ink-500">
+            {activeTab === "projects"
+              ? `Showing ${filteredProjects.length} of ${projects.length} projects`
+              : `Showing ${filteredBrands.length} of ${brands.length} brands`}
+          </span>
         </div>
-        <span className="text-xs text-ink-500">
-          {activeTab === "projects"
-            ? `Showing ${filteredProjects.length} of ${projects.length} projects`
-            : `Showing ${filteredBrands.length} of ${brands.length} brands`}
-        </span>
-      </div>
+      )}
 
       {/* -------------------- PROJECTS TAB -------------------- */}
       {activeTab === "projects" && (
@@ -643,6 +660,14 @@ export default function ProjectsPage() {
         </>
       )}
 
+      {/* -------------------- PRIVACY & CONSENT TAB -------------------- */}
+      {activeTab === "privacy" && activeWorkspace && (
+        <PrivacyConsentTab
+          workspaceId={activeWorkspace.id}
+          projects={projects}
+        />
+      )}
+
       {/* -------------------- CREATE / EDIT PROJECT MODAL -------------------- */}
       <ModalDialog
         isOpen={isCreateProjectOpen || editingProject !== null}
@@ -837,6 +862,27 @@ export default function ProjectsPage() {
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Project Privacy & Consent Policy Configuration */}
+          <div className="rounded-xl border border-line bg-warm-50/60 p-3.5 space-y-2 text-xs">
+            <div className="flex items-center gap-2 font-semibold text-ink-900">
+              <ShieldCheck size={15} className="text-brand-600" />
+              <span>Project Privacy &amp; Consent Configuration</span>
+            </div>
+            <p className="text-[11px] text-ink-600 leading-relaxed">
+              Testimonials collected for this project require explicit opt-in consent (Version 1.0). Customer responses will only be published where permission was explicitly granted.
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-line/60 text-[11px] text-ink-700">
+              <div>
+                <span className="font-medium block text-ink-900">Active Policy Version:</span>
+                <span className="font-mono text-ink-600">v1.0 (Standard)</span>
+              </div>
+              <div>
+                <span className="font-medium block text-ink-900">Separate Media Consent:</span>
+                <span className="text-emerald-700 font-medium">Enforced for video &amp; photos</span>
+              </div>
+            </div>
           </div>
         </form>
       </ModalDialog>

@@ -8,6 +8,8 @@ import {
   isInternalEmail,
   parseCustomerMeta,
 } from "@/lib/customers/utils";
+import { getStorageEngine } from "@/lib/storage/engine";
+import { recordTombstone } from "@/lib/privacy/consent";
 
 type RouteParams = {
   params: Promise<{ id: string; customerId: string }>;
@@ -252,6 +254,11 @@ export async function DELETE(request: Request, context: RouteParams) {
         id: customerId,
         workspaceId,
       },
+      include: {
+        testimonials: {
+          select: { id: true },
+        },
+      },
     });
 
     if (!customer) {
@@ -261,7 +268,62 @@ export async function DELETE(request: Request, context: RouteParams) {
       );
     }
 
-    // Delete customer profile (associated testimonials are preserved with customerId set to null)
+    const url = new URL(request.url);
+    const purgeAll = url.searchParams.get("purge") === "true";
+
+    if (purgeAll && customer.testimonials.length > 0) {
+      const testimonialIds = customer.testimonials.map((t) => t.id);
+      const engine = getStorageEngine();
+
+      // 1. Purge all media files safely from disk
+      const mediaAssets = await prisma.mediaAsset.findMany({
+        where: {
+          testimonialId: { in: testimonialIds },
+          workspaceId,
+        },
+        select: { id: true, localPath: true },
+      });
+
+      for (const asset of mediaAssets) {
+        if (asset.localPath) {
+          await engine.delete(asset.localPath).catch(() => {});
+        }
+        recordTombstone({
+          type: "MEDIA",
+          originalId: asset.id,
+          workspaceId,
+          reason: "CUSTOMER_REQUEST",
+        });
+      }
+
+      // 2. Register tombstones for testimonials
+      for (const tid of testimonialIds) {
+        recordTombstone({
+          type: "TESTIMONIAL",
+          originalId: tid,
+          workspaceId,
+          reason: "CUSTOMER_REQUEST",
+        });
+      }
+
+      // 3. Delete testimonials
+      await prisma.testimonial.deleteMany({
+        where: {
+          id: { in: testimonialIds },
+          workspaceId,
+        },
+      });
+    }
+
+    // Register tombstone for customer
+    recordTombstone({
+      type: "CUSTOMER",
+      originalId: customerId,
+      workspaceId,
+      reason: "CUSTOMER_REQUEST",
+    });
+
+    // Delete customer profile
     await prisma.customer.delete({
       where: {
         id: customerId,
@@ -271,7 +333,9 @@ export async function DELETE(request: Request, context: RouteParams) {
 
     return NextResponse.json({
       success: true,
-      message: "Customer profile deleted successfully. Associated testimonials have been retained.",
+      message: purgeAll
+        ? "Customer and all associated testimonials and media files were permanently erased."
+        : "Customer personal profile deleted. Associated testimonials retained anonymously.",
     });
   } catch (error) {
     console.error("Delete customer error:", error);

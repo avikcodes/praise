@@ -4,6 +4,7 @@ import { parseCustomerMeta } from "@/lib/customers/utils";
 import { parseWidgetConfig } from "@/lib/widgets/utils";
 import { PublicTestimonialCard, PublicWallOfLoveData } from "@/types/widgets";
 import { Prisma, WidgetEventType } from "@prisma/client";
+import { canPublishTestimonial } from "@/lib/privacy/consent";
 
 type RouteParams = {
   params: Promise<{ slug: string }>;
@@ -152,17 +153,31 @@ export async function GET(request: Request, context: RouteParams) {
           include: { tag: true },
         },
         mediaAssets: true,
+        consentRecords: {
+          take: 1,
+          orderBy: { grantedAt: "desc" },
+        },
       },
       orderBy,
     });
 
-    // 4. Sanitize data: NEVER expose private emails, internal notes, or raw IP
-    const sanitizedCards: PublicTestimonialCard[] = testimonials.map((t) => {
+    // 4. Sanitize data & enforce privacy permissions (never publish withdrawn or unconsented content)
+    const publishableTestimonials = testimonials.filter((t) => {
+      const check = canPublishTestimonial(t);
+      return check.canPublish;
+    });
+
+    const sanitizedCards: PublicTestimonialCard[] = publishableTestimonials.map((t) => {
+      const permission = canPublishTestimonial(t);
       let customerMetaWebsite: string | null = null;
       if (t.customer?.socialHandle) {
         const meta = parseCustomerMeta(t.customer.socialHandle);
         customerMetaWebsite = meta.website;
       }
+
+      const showCustName = permission.allowName;
+      const showCustCompany = permission.allowCompany && config.showCompany;
+      const showCustMedia = permission.allowMedia && config.showAvatar;
 
       return {
         id: t.id,
@@ -172,23 +187,25 @@ export async function GET(request: Request, context: RouteParams) {
         isFeatured: t.isFeatured,
         submittedAt: t.submittedAt.toISOString(),
         customer: {
-          name: t.customer?.name || "Anonymous",
-          company: config.showCompany ? t.customer?.company || null : null,
-          title: config.showCompany ? t.customer?.title || null : null,
-          avatarUrl: config.showAvatar ? t.customer?.avatarUrl || null : null,
+          name: showCustName ? (t.customer?.name || "Verified Customer") : "Verified Customer",
+          company: showCustCompany ? t.customer?.company || null : null,
+          title: showCustCompany ? t.customer?.title || null : null,
+          avatarUrl: showCustMedia ? t.customer?.avatarUrl || null : null,
           website: customerMetaWebsite,
         },
         project: t.project,
         tags: config.showTags ? t.tags.map((tagRel) => tagRel.tag.name) : [],
         source: config.showSource ? "Verified Review" : null,
-        media: t.mediaAssets.map((m) => ({
-          id: m.id,
-          type: m.type,
-          url: m.url,
-          mimeType: m.mimeType,
-          fileSizeBytes: m.fileSizeBytes,
-          durationSeconds: m.durationSeconds,
-        })),
+        media: permission.allowMedia
+          ? t.mediaAssets.map((m) => ({
+              id: m.id,
+              type: m.type,
+              url: m.url,
+              mimeType: m.mimeType,
+              fileSizeBytes: m.fileSizeBytes,
+              durationSeconds: m.durationSeconds,
+            }))
+          : [],
       };
     });
 

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceMember } from "@/lib/auth/guards";
 import { TestimonialStatus } from "@prisma/client";
+import { getStorageEngine } from "@/lib/storage/engine";
+import { recordTombstone } from "@/lib/privacy/consent";
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -29,6 +31,38 @@ export async function POST(request: Request, context: RouteParams) {
     };
 
     if (action === "DELETE") {
+      // 1. Safe deletion of all associated media from disk
+      const engine = getStorageEngine();
+      const mediaAssets = await prisma.mediaAsset.findMany({
+        where: {
+          testimonialId: { in: testimonialIds },
+          workspaceId,
+        },
+        select: { id: true, localPath: true },
+      });
+
+      for (const asset of mediaAssets) {
+        if (asset.localPath) {
+          await engine.delete(asset.localPath).catch(() => {});
+        }
+        recordTombstone({
+          type: "MEDIA",
+          originalId: asset.id,
+          workspaceId,
+          reason: "CUSTOMER_REQUEST",
+        });
+      }
+
+      // 2. Register tombstones for all deleted testimonials
+      for (const tid of testimonialIds) {
+        recordTombstone({
+          type: "TESTIMONIAL",
+          originalId: tid,
+          workspaceId,
+          reason: "CUSTOMER_REQUEST",
+        });
+      }
+
       const result = await prisma.testimonial.deleteMany({
         where: baseWhere,
       });
@@ -37,7 +71,7 @@ export async function POST(request: Request, context: RouteParams) {
         success: true,
         action: "DELETE",
         count: result.count,
-        message: `Successfully deleted ${result.count} testimonials.`,
+        message: `Successfully deleted ${result.count} testimonials and purged associated media.`,
       });
     }
 

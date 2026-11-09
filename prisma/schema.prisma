@@ -132,6 +132,7 @@ model Workspace {
   tags           Tag[]
   widgets        Widget[]
   widgetEvents   WidgetEvent[]
+  apiKeys        ApiKey[]
 
   @@index([slug])
   @@map("workspaces")
@@ -461,4 +462,35 @@ model WidgetEvent {
   @@index([recordedAt])
   @@map("widget_events")
 }
+
+// -----------------------------------------------------------------------------
+// 9. API Keys & Programmatic Access
+// -----------------------------------------------------------------------------
+
+enum ApiKeyType {
+  SECRET
+  PUBLISHABLE
+}
+
+model ApiKey {
+  id          String        @id @default(cuid())
+  workspaceId String
+  name        String
+  keyPrefix   String        // e.g. "praise_live_sk_..." or "praise_pk_..."
+  keyHash     String        @unique // SHA-256 hash of the full token
+  type        ApiKeyType    @default(SECRET)
+  role        WorkspaceRole @default(MEMBER)
+  scopes      String?       // Comma-separated permissions, e.g. "read:testimonials,write:testimonials"
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -105,7 +105,48 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
       navigator.clipboard.writeText(window.location.href);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
+      trackInteraction("share_button");
     }
+  };
+
+  // Privacy-conscious, session-deduplicated view tracking for Wall of Love
+  useEffect(() => {
+    if (typeof window === "undefined" || !data.widgetId) return;
+    try {
+      const sessionKey = `praise_wall_view_${data.widgetId}`;
+      if (sessionStorage.getItem(sessionKey)) return;
+      sessionStorage.setItem(sessionKey, "1");
+
+      fetch("/api/analytics/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: "WIDGET",
+          targetId: data.widgetId,
+          eventType: "VIEW",
+          workspaceId: data.workspace?.id,
+          slug: data.slug,
+        }),
+      }).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, [data.widgetId, data.workspace?.id, data.slug]);
+
+  const trackInteraction = (target?: string) => {
+    if (typeof window === "undefined" || !data.widgetId) return;
+    fetch("/api/analytics/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targetType: "WIDGET",
+        targetId: data.widgetId,
+        eventType: "INTERACT",
+        workspaceId: data.workspace?.id,
+        slug: data.slug,
+        metadata: { target },
+      }),
+    }).catch(() => {});
   };
 
   // Theme-specific styles
@@ -532,13 +573,14 @@ function TestimonialCard({
   const borderClass = getCardBorderClasses(config.cardBorder, isDark);
 
   return (
-    <div
+    <article
+      aria-label={`Customer review by ${customer.name}`}
       className={`${radiusClass} ${borderClass} ${cardBg} p-5 transition-all hover:shadow-md ${
         isMasonry ? "break-inside-avoid mb-5" : ""
       } ${isFeatured && config.showFeaturedBadge ? "ring-2 ring-brand-400/50" : ""}`}
     >
       {/* Top Header: Customer Info + Featured Badge */}
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <header className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           {/* Avatar */}
           {customer.avatarUrl ? (
@@ -555,8 +597,8 @@ function TestimonialCard({
           )}
 
           <div>
-            <div className="font-bold text-xs leading-snug flex items-center gap-1">
-              <span>{customer.name}</span>
+            <h3 className="font-bold text-xs leading-snug flex items-center gap-1">
+              <cite className="not-italic font-bold">{customer.name}</cite>
               {customer.website && (
                 <a
                   href={customer.website.startsWith("http") ? customer.website : `https://${customer.website}`}
@@ -568,7 +610,7 @@ function TestimonialCard({
                   <Globe size={11} />
                 </a>
               )}
-            </div>
+            </h3>
 
             {(customer.company || customer.title) && (
               <div className={`text-[11px] leading-tight flex items-center gap-1 mt-0.5 ${subtleText}`}>
@@ -588,11 +630,11 @@ function TestimonialCard({
             <span>Featured</span>
           </span>
         )}
-      </div>
+      </header>
 
       {/* Star Rating */}
       {config.showRatings && rating && rating > 0 && (
-        <div className="flex items-center gap-0.5 text-amber-400 mb-3">
+        <div className="flex items-center gap-0.5 text-amber-400 mb-3" aria-label={`Rating: ${rating} out of 5 stars`}>
           {[1, 2, 3, 4, 5].map((s) => (
             <Star
               key={s}
@@ -605,7 +647,7 @@ function TestimonialCard({
 
       {/* Video Player (if video testimonial) */}
       {videoAsset && config.allowVideoPlayback && (
-        <div className="mb-3.5 rounded-xl overflow-hidden border border-line bg-black">
+        <figure className="mb-3.5 rounded-xl overflow-hidden border border-line bg-black m-0">
           <TestimonialMedia
             media={{
               id: videoAsset.id,
@@ -618,43 +660,43 @@ function TestimonialCard({
             canDownload={false}
             compact
           />
-        </div>
+        </figure>
       )}
 
       {/* Image Gallery Preview (if attached image) */}
       {imageAssets.length > 0 && (
         <div className="mb-3.5 space-y-2">
           {imageAssets.map((img) => (
-            <div key={img.id} className="rounded-xl overflow-hidden border border-line max-h-64">
+            <figure key={img.id} className="rounded-xl overflow-hidden border border-line max-h-64 m-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={img.url}
-                alt="Testimonial attachment"
+                alt={`Photo attached by ${customer.name}`}
                 className="w-full h-auto object-cover hover:scale-105 transition-transform duration-300"
                 loading="lazy"
               />
-            </div>
+            </figure>
           ))}
         </div>
       )}
 
       {/* Testimonial Quote Text */}
-      <div className={`text-xs leading-relaxed italic ${isDark ? "text-ink-100" : "text-ink-800"}`}>
-        &ldquo;{content}&rdquo;
-      </div>
+      <blockquote className={`text-xs leading-relaxed italic ${isDark ? "text-ink-100" : "text-ink-800"}`}>
+        <p>&ldquo;{content}&rdquo;</p>
+      </blockquote>
 
       {/* Card Footer: Date & Tags */}
-      <div className={`mt-4 pt-3 border-t ${borderLine} flex flex-wrap items-center justify-between gap-2 text-[10px] ${subtleText}`}>
+      <footer className={`mt-4 pt-3 border-t ${borderLine} flex flex-wrap items-center justify-between gap-2 text-[10px] ${subtleText}`}>
         {config.showDate && (
           <span className="flex items-center gap-1">
             <Calendar size={11} />
-            <span>
+            <time dateTime={new Date(submittedAt).toISOString()}>
               {new Date(submittedAt).toLocaleDateString(undefined, {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
               })}
-            </span>
+            </time>
           </span>
         )}
 
@@ -683,8 +725,8 @@ function TestimonialCard({
             <ExternalLink size={11} />
           </Link>
         </div>
-      </div>
-    </div>
+      </footer>
+    </article>
   );
 }
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  BarChart3,
   Calendar,
   CheckCircle2,
   Clock,
@@ -215,6 +216,13 @@ export default function DashboardOverviewPage() {
               />
               <span className="hidden sm:inline">Refresh</span>
             </button>
+            <Link
+              href="/dashboard/analytics"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
+            >
+              <BarChart3 size={13} className="text-brand-600" />
+              <span>Analytics</span>
+            </Link>
             <Link
               href="/dashboard/testimonials"
               className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"

@@ -7,7 +7,10 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "brand:export": "node scripts/export-brand.mjs"
+    "brand:export": "node scripts/export-brand.mjs",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
+    "backup:verify": "node scripts/verify-backup.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

@@ -1,0 +1,91 @@
+# ==============================================================================
+# Praise Core — Self-Hosted Production Stack
+# Official Docker Compose configuration with PostgreSQL and Persistent Volumes
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Praise Core Web Application
+  # ----------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: praise:latest
+    container_name: praise-app
+    restart: unless-stopped
+    ports:
+      # Binds to localhost by default for security. Put behind a reverse proxy (Caddy / Nginx) for HTTPS.
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-praise}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-praise}?schema=public
+      - PRAISE_UPLOAD_DIR=/app/storage/uploads
+      - PRAISE_DATA_DIR=/app/data
+      - NEXT_PUBLIC_REPOSITORY_URL=${NEXT_PUBLIC_REPOSITORY_URL:-}
+      - NEXT_PUBLIC_LEGAL_ENTITY_NAME=${NEXT_PUBLIC_LEGAL_ENTITY_NAME:-}
+      - NEXT_PUBLIC_CONTACT_EMAIL=${NEXT_PUBLIC_CONTACT_EMAIL:-}
+      - NEXT_PUBLIC_PRIVACY_EMAIL=${NEXT_PUBLIC_PRIVACY_EMAIL:-}
+    volumes:
+      # Persistent local media storage (video testimonials, audio clips, avatars)
+      - praise_media:/app/storage/uploads
+      # Persistent application data (tombstones, analytics events, ledger logs)
+      - praise_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - praise_network
+
+  # ----------------------------------------------------------------------------
+  # 2. PostgreSQL Relational Database Service
+  # ----------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: praise-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-praise}
+      - POSTGRES_USER=${POSTGRES_USER:-praise}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      # Persistent database volume (survives container updates & recreations)
+      - praise_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-praise} -d $${POSTGRES_DB:-praise}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Secure default: PostgreSQL is NOT exposed to the host machine
+    networks:
+      - praise_network
+
+# ------------------------------------------------------------------------------
+# Persistent Storage Volumes & Isolated Network
+# ------------------------------------------------------------------------------
+volumes:
+  # Database records (users, workspaces, testimonials, consent records)
+  praise_db_data:
+    name: praise_db_data
+  # Uploaded customer media files (videos, audio, avatars)
+  praise_media:
+    name: praise_media
+  # Internal audit and analytics data
+  praise_data:
+    name: praise_data
+
+networks:
+  praise_network:
+    name: praise_network
+    driver: bridge
+

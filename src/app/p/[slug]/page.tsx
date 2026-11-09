@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
 import { PublicFormClient } from "@/app/p/[slug]/public-form-client";
 import { PraiseLogo } from "@/components/brand";
 import { CollectionFormDetail, FormFieldItem } from "@/types/form-builder";
+import { ROBOTS_DIRECTIVES, sanitizePublicSlug, toAbsoluteUrl } from "@/lib/seo/metadata";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -71,18 +74,50 @@ const fallbackDevForm: CollectionFormDetail = {
   ],
 };
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const cleanSlug = sanitizePublicSlug(slug);
+
   try {
     const form = await prisma.collectionForm.findFirst({
-      where: { slug },
-      select: { title: true, headerPrompt: true },
+      where: { slug: cleanSlug },
+      include: {
+        project: { select: { name: true, logoUrl: true } },
+      },
     });
 
-    if (form) {
+    if (form && form.isPublished) {
+      const orgName = form.project?.name || SITE_NAME;
+      const title = `${form.title} — ${orgName} | ${SITE_NAME}`;
+      const description =
+        form.headerPrompt ||
+        form.description ||
+        `Share your honest feedback and customer testimonial for ${orgName}.`;
+      const canonicalUrl = `${SITE_URL}/p/${cleanSlug}`;
+      const previewImageUrl = toAbsoluteUrl(form.customLogoUrl || form.project?.logoUrl);
+
       return {
-        title: `${form.title} — Praise`,
-        description: form.headerPrompt,
+        title,
+        description,
+        alternates: {
+          canonical: canonicalUrl,
+        },
+        robots: ROBOTS_DIRECTIVES.indexable,
+        openGraph: {
+          type: "website",
+          locale: "en_US",
+          siteName: SITE_NAME,
+          url: canonicalUrl,
+          title,
+          description,
+          images: [{ url: previewImageUrl, alt: title }],
+        },
+        twitter: {
+          card: "summary_large_image",
+          title,
+          description,
+          images: [previewImageUrl],
+        },
       };
     }
   } catch {
@@ -92,6 +127,7 @@ export async function generateMetadata({ params }: PageProps) {
   return {
     title: "Testimonial Collection Form — Praise",
     description: "Submit customer feedback and reviews.",
+    robots: ROBOTS_DIRECTIVES.noindex,
   };
 }
 

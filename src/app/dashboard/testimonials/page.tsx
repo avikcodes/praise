@@ -41,6 +41,7 @@ import { TestimonialMedia } from "@/components/ui/testimonial-media";
 import { ExportModal } from "@/components/dashboard/export-modal";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
+import { parseConsentPayload } from "@/lib/privacy/format";
 
 type FilterTab = "all" | "pending" | "approved" | "rejected" | "archived";
 type ViewMode = "inbox" | "cards";
@@ -2005,31 +2006,70 @@ function TestimonialsContent() {
               </div>
             </div>
 
-            {/* GDPR Consent Card */}
-            {selectedTestimonial.consentRecord && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 text-xs space-y-2">
-                <div className="flex items-center gap-1.5 font-semibold text-emerald-900">
-                  <ShieldCheck size={15} className="text-emerald-600" />
-                  <span>Verified Marketing Consent Captured</span>
+            {/* Verified Consent & Permissions Card */}
+            {selectedTestimonial.consentRecord && (() => {
+              const consentPayload = parseConsentPayload(selectedTestimonial.consentRecord.consentText);
+              return (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 text-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-semibold text-emerald-900">
+                      <ShieldCheck size={15} className="text-emerald-600" />
+                      <span>Verified Permission Logged ({consentPayload.version})</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-700 font-mono">
+                      {new Date(selectedTestimonial.consentRecord.grantedAt).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-emerald-800 leading-relaxed italic bg-white/70 p-2.5 rounded-lg border border-emerald-100">
+                    &ldquo;{consentPayload.statement}&rdquo;
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2 text-[10px] text-emerald-800 pt-1 border-t border-emerald-200/60">
+                    <div>
+                      <span className="font-semibold block">Permitted Uses:</span>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {consentPayload.permittedPurposes.publicWebsite && (
+                          <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Website
+                          </span>
+                        )}
+                        {consentPayload.permittedPurposes.socialMedia && (
+                          <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Social
+                          </span>
+                        )}
+                        {consentPayload.permittedPurposes.marketingMaterials && (
+                          <span className="bg-emerald-100/70 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200">
+                            Marketing
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="font-semibold block">Attribution &amp; Media:</span>
+                      <span className="text-emerald-700">
+                        {consentPayload.mediaPermission ? "Media Permitted" : "Media Restricted"} •{" "}
+                        {consentPayload.allowNameDisplay ? "Name Permitted" : "Anonymous"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-emerald-700 pt-0.5 border-t border-emerald-200/40">
+                    <span>
+                      Granted by {selectedTestimonial.consentRecord.customerName} (
+                      {selectedTestimonial.consentRecord.customerEmail})
+                    </span>
+                    {selectedTestimonial.consentRecord.ipAddress && (
+                      <span className="font-mono">
+                        Verification IP: {selectedTestimonial.consentRecord.ipAddress}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <p className="text-[11px] text-emerald-800 leading-relaxed italic bg-white/70 p-2.5 rounded-lg border border-emerald-100">
-                  &ldquo;{selectedTestimonial.consentRecord.consentText}&rdquo;
-                </p>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-emerald-700 pt-0.5">
-                  <span>
-                    Granted by {selectedTestimonial.consentRecord.customerName} (
-                    {selectedTestimonial.consentRecord.customerEmail})
-                  </span>
-                  <span>
-                    {new Date(
-                      selectedTestimonial.consentRecord.grantedAt,
-                    ).toLocaleString()}
-                    {selectedTestimonial.consentRecord.ipAddress &&
-                      ` • IP: ${selectedTestimonial.consentRecord.ipAddress}`}
-                  </span>
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </ModalDialog>
       )}

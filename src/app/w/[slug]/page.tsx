@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { prisma } from "@/lib/db/client";
 import { parseCustomerMeta } from "@/lib/customers/utils";
@@ -5,6 +6,11 @@ import { parseWidgetConfig } from "@/lib/widgets/utils";
 import { PraiseLogo } from "@/components/brand";
 import { WallOfLoveClient } from "./wall-of-love-client";
 import { PublicTestimonialCard, PublicWallOfLoveData } from "@/types/widgets";
+import {
+  buildWallOfLoveMetadata,
+  generateWallOfLoveJsonLd,
+  sanitizePublicSlug,
+} from "@/lib/seo/metadata";
 import { Prisma } from "@prisma/client";
 
 type PageProps = {
@@ -117,41 +123,84 @@ const fallbackDevWall: PublicWallOfLoveData = {
   ],
 };
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const cleanSlug = slug.toLowerCase().trim();
+  const cleanSlug = sanitizePublicSlug(slug);
 
   try {
-    const widget = await prisma.widget.findFirst({
+    let widget = await prisma.widget.findFirst({
       where: {
         OR: [
           { id: cleanSlug },
           { configJson: { contains: `"slug":"${cleanSlug}"` } },
         ],
       },
-      select: { name: true, configJson: true },
+      include: {
+        project: { select: { name: true, slug: true, logoUrl: true } },
+        workspace: { select: { name: true, slug: true, logoUrl: true } },
+      },
     });
+
+    if (!widget) {
+      const matchedProject = await prisma.project.findFirst({
+        where: { slug: cleanSlug },
+        include: {
+          workspace: { select: { name: true, slug: true, logoUrl: true } },
+        },
+      });
+
+      if (matchedProject) {
+        widget = await prisma.widget.findFirst({
+          where: {
+            projectId: matchedProject.id,
+            workspaceId: matchedProject.workspaceId,
+          },
+          include: {
+            project: { select: { name: true, slug: true, logoUrl: true } },
+            workspace: { select: { name: true, slug: true, logoUrl: true } },
+          },
+        });
+
+        if (!widget) {
+          return buildWallOfLoveMetadata(
+            {
+              slug: cleanSlug,
+              title: `${matchedProject.name} Wall of Love`,
+              description: `Real customer testimonials and feedback for ${matchedProject.name}.`,
+              project: matchedProject,
+              workspace: matchedProject.workspace,
+            },
+            cleanSlug
+          );
+        }
+      }
+    }
 
     if (widget) {
       const config = parseWidgetConfig(widget.configJson, widget.name);
-      return {
-        title: `${config.title || widget.name} — Praise Wall of Love`,
-        description: config.description,
-      };
+      return buildWallOfLoveMetadata(
+        {
+          slug: config.slug || cleanSlug,
+          title: config.title || widget.name,
+          description: config.description,
+          customLogoUrl: config.customLogoUrl,
+          project: widget.project,
+          workspace: widget.workspace,
+        },
+        cleanSlug
+      );
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("Error generating Wall of Love metadata:", err);
   }
 
-  return {
-    title: "Wall of Love — Praise",
-    description: "Real customer testimonials and reviews.",
-  };
+  // Not found / unlinked => noindex
+  return buildWallOfLoveMetadata(null, cleanSlug);
 }
 
 export default async function PublicWallPage({ params }: PageProps) {
   const { slug } = await params;
-  const cleanSlug = slug.toLowerCase().trim();
+  const cleanSlug = sanitizePublicSlug(slug);
 
   let wallData: PublicWallOfLoveData | null = null;
 
@@ -357,6 +406,26 @@ export default async function PublicWallPage({ params }: PageProps) {
     );
   }
 
-  return <WallOfLoveClient data={wallData} />;
+  const jsonLd = generateWallOfLoveJsonLd(
+    {
+      slug: wallData.slug,
+      title: wallData.title,
+      description: wallData.description,
+      totalApproved: wallData.totalApproved,
+      project: wallData.project,
+      workspace: wallData.workspace,
+    },
+    wallData.testimonials
+  );
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <WallOfLoveClient data={wallData} />
+    </>
+  );
 }
 
