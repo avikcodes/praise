@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -13,6 +13,7 @@ import {
   HardDrive,
   Key,
   Loader2,
+  Plus,
   Save,
   ShieldCheck,
   Trash2,
@@ -21,6 +22,7 @@ import {
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusPill } from "@/components/dashboard/status-pill";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
+import { ModalDialog } from "@/components/dashboard/modal-dialog";
 import { useToast } from "@/components/dashboard/toast-context";
 import {
   WorkspaceItem,
@@ -129,12 +131,134 @@ export default function SettingsPage() {
     deleteWorkspace,
   } = useWorkspace();
 
-  const [copiedKey, setCopiedKey] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const toast = useToast();
+
+  // Current session user details
+  const [currentUser, setCurrentUser] = useState<{ id?: string; name?: string; email?: string } | null>(null);
+
+  // Real API Keys Management State
+  const [apiKeys, setApiKeys] = useState<Array<{
+    id: string;
+    name: string;
+    keyPrefix: string;
+    type: "SECRET" | "PUBLISHABLE";
+    role: "OWNER" | "ADMIN" | "MEMBER";
+    createdAt: string;
+    lastUsedAt: string | null;
+  }>>([]);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(true);
+  const [createKeyModalOpen, setCreateKeyModalOpen] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyType, setNewKeyType] = useState<"SECRET" | "PUBLISHABLE">("SECRET");
+  const [newKeyRole, setNewKeyRole] = useState<"MEMBER" | "ADMIN">("MEMBER");
+  const [isCreatingKey, setIsCreatingKey] = useState(false);
+  const [newlyCreatedKeyToken, setNewlyCreatedKeyToken] = useState<string | null>(null);
+  const [copiedToken, setCopiedToken] = useState(false);
+  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
+
+  // Fetch current user details
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Fetch API keys for active workspace
+  useEffect(() => {
+    const wsId = activeWorkspace?.id;
+    if (!wsId) return;
+    let ignore = false;
+    fetch(`/api/workspaces/${wsId}/api-keys`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!ignore && data?.keys) {
+          setApiKeys(data.keys);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!ignore) setIsLoadingKeys(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeWorkspace?.id]);
+
+  const refreshApiKeys = async () => {
+    if (!activeWorkspace?.id) return;
+    try {
+      const res = await fetch(`/api/workspaces/${activeWorkspace.id}/api-keys`);
+      if (res.ok) {
+        const data = await res.json();
+        setApiKeys(data.keys || []);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleCreateKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeWorkspace?.id || !newKeyName.trim()) return;
+
+    setIsCreatingKey(true);
+    try {
+      const res = await fetch(`/api/workspaces/${activeWorkspace.id}/api-keys`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newKeyName.trim(),
+          type: newKeyType,
+          role: newKeyRole,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create API key");
+      }
+
+      const data = await res.json();
+      setNewlyCreatedKeyToken(data.rawKey);
+      setNewKeyName("");
+      toast.success("API Key Generated", "Copy your token now. It will not be shown again.");
+      refreshApiKeys();
+    } catch (err: unknown) {
+      toast.error("Error", err instanceof Error ? err.message : "Failed to create API key");
+    } finally {
+      setIsCreatingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (keyId: string) => {
+    if (!activeWorkspace?.id) return;
+    setRevokingKeyId(keyId);
+    try {
+      const res = await fetch(`/api/workspaces/${activeWorkspace.id}/api-keys/${keyId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setApiKeys((prev) => prev.filter((k) => k.id !== keyId));
+        toast.success("API Key Revoked", "The key was permanently deactivated.");
+      } else {
+        toast.error("Failed to Revoke", "Could not deactivate the selected key.");
+      }
+    } catch {
+      toast.error("Error", "Network error revoking API key.");
+    } finally {
+      setRevokingKeyId(null);
+    }
+  };
 
   const handleExportWorkspace = async () => {
     if (!activeWorkspace) return;
@@ -211,13 +335,6 @@ export default function SettingsPage() {
     }
   };
 
-  const copyKey = () => {
-    navigator.clipboard.writeText("prz_live_9f82d1c7a4b0e51782390a");
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
-    toast.success("API Key Copied", "Token copied to clipboard.");
-  };
-
   const isOwner = activeWorkspace?.role === "OWNER";
 
   return (
@@ -275,14 +392,16 @@ export default function SettingsPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between rounded-xl border border-line p-3">
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs">
-                A
+              <div className="h-8 w-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs uppercase">
+                {currentUser?.name ? currentUser.name.charAt(0) : "U"}
               </div>
               <div>
                 <span className="text-xs font-semibold text-ink-900 block">
-                  Admin User (You)
+                  {currentUser?.name || "Active User"} (You)
                 </span>
-                <span className="text-[11px] text-ink-500">admin@praise.local</span>
+                <span className="text-[11px] text-ink-500">
+                  {currentUser?.email || "Current Account"}
+                </span>
               </div>
             </div>
             <StatusPill status={activeWorkspace?.role || "OWNER"} variant="active" />
@@ -333,46 +452,124 @@ export default function SettingsPage() {
 
       {/* 4. API Keys */}
       <div className="rounded-2xl border border-line bg-white p-5 sm:p-6 shadow-xs space-y-4">
-        <div className="flex items-center gap-2.5 border-b border-line pb-4">
-          <Key size={18} className="text-brand-600" />
-          <div>
-            <h2 className="text-sm sm:text-base font-semibold text-ink-900">
-              API Access Keys
-            </h2>
-            <p className="text-xs text-ink-500">
-              Access the Praise REST API programmatically from your applications.
-            </p>
+        <div className="flex items-center justify-between border-b border-line pb-4">
+          <div className="flex items-center gap-2.5">
+            <Key size={18} className="text-brand-600" />
+            <div>
+              <h2 className="text-sm sm:text-base font-semibold text-ink-900">
+                API Access Keys
+              </h2>
+              <p className="text-xs text-ink-500">
+                Access the Praise REST API programmatically from your applications.
+              </p>
+            </div>
           </div>
-        </div>
-
-        <div className="rounded-xl border border-line bg-warm-50 p-3 flex items-center justify-between gap-3 text-xs">
-          <div className="truncate">
-            <span className="font-semibold text-ink-900 block text-[11px]">
-              Production Read &amp; Write Key
-            </span>
-            <code className="text-[11px] text-ink-600 font-mono">
-              prz_live_••••••••••••••••••••••••••••
-            </code>
-          </div>
-
           <button
             type="button"
-            onClick={copyKey}
-            className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink-700 hover:bg-warm-100 transition-colors shrink-0"
+            onClick={() => {
+              setNewKeyName("");
+              setNewKeyType("SECRET");
+              setNewKeyRole("MEMBER");
+              setNewlyCreatedKeyToken(null);
+              setCreateKeyModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 transition-colors shadow-2xs"
           >
-            {copiedKey ? (
-              <>
-                <Check size={12} className="text-emerald-600" />
-                <span className="text-emerald-600">Copied</span>
-              </>
-            ) : (
-              <>
-                <Copy size={12} />
-                <span>Copy</span>
-              </>
-            )}
+            <Plus size={13} />
+            <span>Create API Key</span>
           </button>
         </div>
+
+        {/* Newly created token banner */}
+        {newlyCreatedKeyToken && (
+          <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-emerald-800 font-semibold text-xs">
+              <Check size={14} className="text-emerald-600" />
+              <span>New API Key Generated — Copy it now!</span>
+            </div>
+            <p className="text-[11px] text-emerald-700">
+              For your security, this raw secret token will never be displayed again. Store it securely in your environment variables.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={newlyCreatedKeyToken}
+                className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-1.5 font-mono text-xs text-ink-900 select-all"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(newlyCreatedKeyToken);
+                  setCopiedToken(true);
+                  setTimeout(() => setCopiedToken(false), 2000);
+                  toast.success("Token Copied", "API key copied to clipboard.");
+                }}
+                className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition-colors shrink-0"
+              >
+                {copiedToken ? <Check size={13} /> : <Copy size={13} />}
+                <span>{copiedToken ? "Copied" : "Copy"}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* List active keys */}
+        {isLoadingKeys ? (
+          <div className="flex items-center justify-center p-6 text-ink-400">
+            <Loader2 size={18} className="animate-spin mr-2" />
+            <span className="text-xs">Loading API keys...</span>
+          </div>
+        ) : apiKeys.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-line p-6 text-center text-xs text-ink-500">
+            No API keys generated yet. Click &ldquo;Create API Key&rdquo; to integrate with your custom backend or scripts.
+          </div>
+        ) : (
+          <div className="divide-y divide-line/60 rounded-xl border border-line">
+            {apiKeys.map((k) => (
+              <div key={k.id} className="flex items-center justify-between p-3 text-xs gap-3">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-ink-900">{k.name}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                      k.type === "PUBLISHABLE" ? "bg-sky-100 text-sky-800" : "bg-purple-100 text-purple-800"
+                    }`}>
+                      {k.type}
+                    </span>
+                    <span className="text-[10px] text-ink-400 font-mono">
+                      {k.keyPrefix}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-ink-400 flex items-center gap-2">
+                    <span>Role: {k.role}</span>
+                    <span>&bull;</span>
+                    <span>Created: {new Date(k.createdAt).toLocaleDateString()}</span>
+                    {k.lastUsedAt && (
+                      <>
+                        <span>&bull;</span>
+                        <span>Last used: {new Date(k.lastUsedAt).toLocaleDateString()}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleRevokeKey(k.id)}
+                  disabled={revokingKeyId === k.id}
+                  className="p-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                  title="Revoke API key"
+                >
+                  {revokingKeyId === k.id ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={13} />
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 5. Privacy, Consent & Data Portability */}
@@ -478,6 +675,92 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* Create API Key Modal Dialog */}
+      <ModalDialog
+        isOpen={createKeyModalOpen}
+        onClose={() => setCreateKeyModalOpen(false)}
+        title="Create New API Key"
+        description="Generate an API key token to programmatically query and manage your testimonials."
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateKey} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-semibold text-ink-900 mb-1">
+              Key Description / Name
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Zapier Sync, Mobile App, CI Pipeline"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              className="w-full rounded-lg border border-line p-2 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-semibold text-ink-900 mb-1">
+                Key Type
+              </label>
+              <select
+                value={newKeyType}
+                onChange={(e) => setNewKeyType(e.target.value as "SECRET" | "PUBLISHABLE")}
+                className="w-full rounded-lg border border-line bg-white p-2 text-xs text-ink-900 focus:border-brand-500 focus:outline-none"
+              >
+                <option value="SECRET">Secret Key (Full Access)</option>
+                <option value="PUBLISHABLE">Publishable (Public Read-Only)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-ink-900 mb-1">
+                Role Permission
+              </label>
+              <select
+                value={newKeyRole}
+                onChange={(e) => setNewKeyRole(e.target.value as "MEMBER" | "ADMIN")}
+                className="w-full rounded-lg border border-line bg-white p-2 text-xs text-ink-900 focus:border-brand-500 focus:outline-none"
+              >
+                <option value="MEMBER">Member (Standard Operations)</option>
+                <option value="ADMIN">Admin (Manage Forms & Settings)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-warm-50 p-3 text-[11px] text-ink-600 space-y-1">
+            <span className="font-semibold block text-ink-900">Security Notice:</span>
+            <p>
+              Secret keys start with <code className="font-mono text-purple-700">praise_live_sk_</code>. They have management access and should never be exposed in client-side code.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
+            <button
+              type="button"
+              onClick={() => setCreateKeyModalOpen(false)}
+              className="rounded-lg border border-line px-3 py-1.5 font-semibold text-ink-600 hover:bg-warm-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isCreatingKey || !newKeyName.trim()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-1.5 font-semibold text-white hover:bg-brand-700 transition-colors disabled:opacity-50"
+            >
+              {isCreatingKey ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" />
+                  <span>Generating...</span>
+                </>
+              ) : (
+                <span>Generate Key</span>
+              )}
+            </button>
+          </div>
+        </form>
+      </ModalDialog>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog

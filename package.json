@@ -7,6 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node scripts/audit-v1.mjs && node scripts/test-auth-isolation.mjs && node scripts/test-backup-restore.mjs && node scripts/test-rest-api.mjs",
+    "test:audit": "node scripts/audit-v1.mjs",
     "brand:export": "node scripts/export-brand.mjs",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs",

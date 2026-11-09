@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { requireAuth } from "@/lib/auth/guards";
+import { requireAuth, AuthError } from "@/lib/auth/guards";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
@@ -44,10 +46,16 @@ export async function GET() {
       });
     }
   } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { authenticated: false, error: error.message },
+        { status: error.status }
+      );
+    }
     console.error("Session check error:", error);
     return NextResponse.json(
       { error: "Failed to verify session." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
