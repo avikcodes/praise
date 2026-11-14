@@ -2,25 +2,38 @@
 
 import { useState } from "react";
 import {
+  AlertCircle,
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Bookmark,
+  Building2,
+  Calendar,
   CheckSquare,
   ChevronDown,
   FileText,
+  FileUp,
+  GitFork,
   Globe,
+  Hash,
+  LayoutTemplate,
   ListFilter,
   Loader2,
   Mail,
   Mic,
+  Package,
   Palette,
+  Phone,
   Plus,
   Radio,
+  RotateCcw,
   Save,
   Sliders,
+  Sparkles,
   Star,
   Trash2,
   Type,
+  UserCheck,
   Video,
 } from "lucide-react";
 import {
@@ -28,7 +41,18 @@ import {
   FormCustomFieldType,
   FormFieldItem,
 } from "@/types/form-builder";
+import {
+  PRESET_COMPANY_SIZES,
+  PRESET_CUSTOMER_ROLES,
+  PRESET_PRODUCT_PLANS,
+} from "@/lib/forms/templates";
+import { FormFlowConfig, createDefaultFlowConfig } from "@/lib/forms/flow-engine";
+import { FormFlowEditor } from "@/components/dashboard/forms/form-flow-editor";
 import { FormPreview } from "@/components/dashboard/forms/form-preview";
+import { TemplateSelectorModal } from "@/components/dashboard/forms/template-selector-modal";
+import { SaveTemplateModal } from "@/components/dashboard/forms/save-template-modal";
+import { AdvancedFieldModal } from "@/components/dashboard/forms/advanced-field-modal";
+import { sanitizeCss } from "@/lib/forms/css-sanitizer";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
 import { cn } from "@/lib/utils";
@@ -42,17 +66,25 @@ type FormBuilderProps = {
 const customFieldTypeDefinitions: {
   type: FormCustomFieldType;
   label: string;
-  icon: typeof Type;
+  icon: any;
   description: string;
 }[] = [
   { type: "SHORT_TEXT", label: "Short Text", icon: Type, description: "Single-line text response" },
   { type: "LONG_TEXT", label: "Long Text", icon: FileText, description: "Multi-line paragraph answer" },
-  { type: "EMAIL", label: "Email", icon: Mail, description: "Email address with validation" },
-  { type: "URL", label: "Website URL", icon: Globe, description: "Web link or portfolio URL" },
-  { type: "SINGLE_CHOICE", label: "Single Choice", icon: Radio, description: "Select one option from a dropdown" },
+  { type: "LONG_FORM", label: "Long-Form Story", icon: FileText, description: "Extended paragraph for customer stories" },
+  { type: "NUMBER", label: "Number", icon: Hash, description: "Quantifiable metrics, scores, or ratings" },
+  { type: "PHONE", label: "Phone Number", icon: Phone, description: "Contact phone number with formatting" },
+  { type: "DATE", label: "Date", icon: Calendar, description: "Purchase, event, or project completion date" },
+  { type: "DROPDOWN", label: "Dropdown Select", icon: ChevronDown, description: "Single selection from a dropdown list" },
+  { type: "SINGLE_CHOICE", label: "Single Choice", icon: Radio, description: "Select one option from a list" },
   { type: "MULTIPLE_CHOICE", label: "Multiple Choice", icon: ListFilter, description: "Select multiple options with checkboxes" },
-  { type: "CHECKBOX", label: "Consent Checkbox", icon: CheckSquare, description: "Single toggle checkbox agreement" },
+  { type: "FILE_UPLOAD", label: "File Attachment", icon: FileUp, description: "PDF, document, or image attachment" },
+  { type: "WEBSITE", label: "Website URL", icon: Globe, description: "Web link, portfolio, or social profile URL" },
+  { type: "CUSTOMER_ROLE", label: "Customer Role", icon: UserCheck, description: "Predefined organization role dropdown" },
+  { type: "COMPANY_SIZE", label: "Company Size", icon: Building2, description: "B2B employee range selector" },
+  { type: "PRODUCT_PLAN", label: "Product / Plan Tier", icon: Package, description: "Product model or subscription plan" },
   { type: "STAR_RATING", label: "Star Rating", icon: Star, description: "1 to 5 star rating question" },
+  { type: "CHECKBOX", label: "Consent Checkbox", icon: CheckSquare, description: "Single toggle checkbox agreement" },
 ];
 
 export function FormBuilder({
@@ -64,10 +96,29 @@ export function FormBuilder({
   const toast = useToast();
 
   const [activeTab, setActiveTab] = useState<
-    "general" | "standard" | "custom" | "appearance"
+    "general" | "standard" | "custom" | "flow" | "appearance"
   >("general");
   const [isSaving, setIsSaving] = useState(false);
   const [addFieldMenuOpen, setAddFieldMenuOpen] = useState(false);
+
+  // Form Flow State (Multi-step & Conditional Branching)
+  const [flowConfig, setFlowConfig] = useState<FormFlowConfig>(() => {
+    if (initialForm?.flowConfigJson) {
+      try {
+        const parsed = JSON.parse(initialForm.flowConfigJson);
+        return {
+          ...parsed,
+          enabled: initialForm.isMultiStep ?? parsed.enabled ?? false,
+        };
+      } catch {
+        // fallback to default
+      }
+    }
+    return {
+      ...createDefaultFlowConfig(),
+      enabled: initialForm?.isMultiStep ?? false,
+    };
+  });
 
   // Form State
   const [title, setTitle] = useState(initialForm?.title || "Customer Feedback Form");
@@ -86,6 +137,32 @@ export function FormBuilder({
   const [maxVideoDurationSeconds, setMaxVideoDurationSeconds] = useState(
     initialForm?.maxVideoDurationSeconds ?? 120,
   );
+  const [videoInstructions, setVideoInstructions] = useState<string>(
+    initialForm?.videoInstructions || "",
+  );
+  const [recordingQuestions, setRecordingQuestions] = useState<
+    { id: string; text: string }[]
+  >(() => {
+    if (initialForm?.recordingQuestionsJson) {
+      try {
+        const parsed = JSON.parse(initialForm.recordingQuestionsJson);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item, idx) => ({
+            id: item.id || `rq_${idx}_${Date.now()}`,
+            text: typeof item === "string" ? item : item.text || "",
+          }));
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return [
+      { id: "rq_1", text: "Who are you and what company or role do you represent?" },
+      { id: "rq_2", text: "What specific challenge were you looking to solve?" },
+      { id: "rq_3", text: "What measurable results have you achieved?" },
+    ];
+  });
+  const [newQuestionInput, setNewQuestionInput] = useState<string>("");
   const [isPublished, setIsPublished] = useState(initialForm?.isPublished ?? true);
 
   // Submission controls & Appearance
@@ -98,6 +175,12 @@ export function FormBuilder({
     initialForm?.accentColor || "#7049D8",
   );
   const [theme, setTheme] = useState(initialForm?.theme || "warm");
+  const [customCss, setCustomCss] = useState(initialForm?.customCss || "");
+
+  // Modal Dialogs State
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [saveTemplateModalOpen, setSaveTemplateModalOpen] = useState(false);
+  const [editingFieldModalIndex, setEditingFieldModalIndex] = useState<number | null>(null);
 
   // Standard fields state
   const [collectName, setCollectName] = useState(initialForm?.collectName ?? true);
@@ -149,26 +232,128 @@ export function FormBuilder({
 
   const addCustomField = (type: FormCustomFieldType) => {
     const typeDef = customFieldTypeDefinitions.find((d) => d.type === type);
+    let optionsJson: string | null = null;
+    let validationRulesJson: string | null = null;
+    let helpText: string | null = null;
+    let placeholder = "Your response here...";
+
+    if (type === "CHECKBOX") {
+      placeholder = "I agree to the terms above";
+    } else if (
+      type === "SINGLE_CHOICE" ||
+      type === "MULTIPLE_CHOICE" ||
+      type === "DROPDOWN"
+    ) {
+      placeholder = "Select an option...";
+      optionsJson = JSON.stringify(["Option A", "Option B", "Option C"]);
+    } else if (type === "CUSTOMER_ROLE") {
+      placeholder = "Select your role...";
+      helpText = "Choose the option matching your responsibility.";
+      optionsJson = JSON.stringify(PRESET_CUSTOMER_ROLES);
+    } else if (type === "COMPANY_SIZE") {
+      placeholder = "Select company size...";
+      helpText = "Approximate team size across your organization.";
+      optionsJson = JSON.stringify(PRESET_COMPANY_SIZES);
+    } else if (type === "PRODUCT_PLAN") {
+      placeholder = "Select product tier...";
+      helpText = "Active edition or subscription tier.";
+      optionsJson = JSON.stringify(PRESET_PRODUCT_PLANS);
+    } else if (type === "NUMBER") {
+      placeholder = "e.g. 42";
+      helpText = "Enter a numeric value.";
+      validationRulesJson = JSON.stringify({ minNumber: 0 });
+    } else if (type === "PHONE") {
+      placeholder = "+1 (555) 000-0000";
+      helpText = "We will never share your phone number.";
+    } else if (type === "DATE") {
+      placeholder = "YYYY-MM-DD";
+      helpText = "Select the relevant date.";
+    } else if (type === "FILE_UPLOAD") {
+      placeholder = "Choose attachment...";
+      helpText = "Document or image file (up to 10MB).";
+      validationRulesJson = JSON.stringify({
+        maxFileSizeMb: 10,
+        allowedExtensions: ["pdf", "docx", "png", "jpg"],
+      });
+    } else if (type === "WEBSITE") {
+      placeholder = "https://yourcompany.com";
+      helpText = "Website or social profile link.";
+    } else if (type === "LONG_FORM") {
+      placeholder = "Share your detailed story and results...";
+      helpText = "Provide an in-depth testimonial response.";
+    }
+
     const newField: FormFieldItem = {
       label: `New ${typeDef?.label || "Question"}`,
       description: "",
-      placeholder:
-        type === "CHECKBOX"
-          ? "I agree to the terms above"
-          : type === "SINGLE_CHOICE" || type === "MULTIPLE_CHOICE"
-          ? ""
-          : "Your response here...",
+      helpText,
+      placeholder,
       type,
       isRequired: false,
       orderIndex: customFields.length,
-      optionsJson:
-        type === "SINGLE_CHOICE" || type === "MULTIPLE_CHOICE"
-          ? JSON.stringify(["Option A", "Option B", "Option C"])
-          : null,
+      optionsJson,
+      validationRulesJson,
     };
     setCustomFields((prev) => [...prev, newField]);
     setAddFieldMenuOpen(false);
     setActiveTab("custom");
+  };
+
+  const handleApplyTemplate = (config: any) => {
+    if (config.title) setTitle(config.title);
+    if (config.headerPrompt) setHeaderPrompt(config.headerPrompt);
+    if (config.description !== undefined) setDescription(config.description || "");
+    if (config.thankYouMessage !== undefined)
+      setThankYouMessage(config.thankYouMessage || "");
+    if (config.allowVideo !== undefined) setAllowVideo(config.allowVideo);
+    if (config.allowAudio !== undefined) setAllowAudio(config.allowAudio);
+    if (config.allowText !== undefined) setAllowText(config.allowText);
+    if (config.collectName !== undefined) setCollectName(config.collectName);
+    if (config.nameRequired !== undefined) setNameRequired(config.nameRequired);
+    if (config.collectEmail !== undefined) setCollectEmail(config.collectEmail);
+    if (config.emailRequired !== undefined) setEmailRequired(config.emailRequired);
+    if (config.collectCompany !== undefined) setCollectCompany(config.collectCompany);
+    if (config.companyRequired !== undefined)
+      setCompanyRequired(config.companyRequired);
+    if (config.collectJobTitle !== undefined)
+      setCollectJobTitle(config.collectJobTitle);
+    if (config.jobTitleRequired !== undefined)
+      setJobTitleRequired(config.jobTitleRequired);
+    if (config.collectWebsite !== undefined)
+      setCollectWebsite(config.collectWebsite);
+    if (config.websiteRequired !== undefined)
+      setWebsiteRequired(config.websiteRequired);
+    if (config.collectRating !== undefined) setCollectRating(config.collectRating);
+    if (config.ratingRequired !== undefined)
+      setRatingRequired(config.ratingRequired);
+    if (config.collectText !== undefined) setCollectText(config.collectText);
+    if (config.textRequired !== undefined) setTextRequired(config.textRequired);
+    if (config.collectAvatar !== undefined) setCollectAvatar(config.collectAvatar);
+    if (config.collectConsent !== undefined) setCollectConsent(config.collectConsent);
+    if (config.consentRequired !== undefined)
+      setConsentRequired(config.consentRequired);
+    if (config.consentText) setConsentText(config.consentText);
+    if (config.accentColor) setAccentColor(config.accentColor);
+    if (config.theme) setTheme(config.theme);
+    if (config.customCss !== undefined) setCustomCss(config.customCss || "");
+    if (config.fields && Array.isArray(config.fields)) {
+      setCustomFields(
+        config.fields.map((f: any, idx: number) => ({
+          ...f,
+          orderIndex: idx,
+        }))
+      );
+    }
+  };
+
+  const handleRestoreDefaultStyling = () => {
+    setCustomCss("");
+    setAccentColor("#7049D8");
+    setTheme("warm");
+    toast.success(
+      "Default Styling Restored",
+      "Custom CSS and theme styling reset to default."
+    );
   };
 
   const updateCustomField = (index: number, updates: Partial<FormFieldItem>) => {
@@ -199,6 +384,59 @@ export function FormBuilder({
         .filter((_, i) => i !== index)
         .map((item, idx) => ({ ...item, orderIndex: idx })),
     );
+  };
+
+  // Guided Video Recording Questions Management
+  const addRecordingQuestion = () => {
+    if (!newQuestionInput.trim()) return;
+    setRecordingQuestions((prev) => [
+      ...prev,
+      { id: `rq_${Date.now()}_${prev.length + 1}`, text: newQuestionInput.trim() },
+    ]);
+    setNewQuestionInput("");
+  };
+
+  const removeRecordingQuestion = (index: number) => {
+    setRecordingQuestions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const moveRecordingQuestion = (index: number, direction: "up" | "down") => {
+    if (
+      (direction === "up" && index === 0) ||
+      (direction === "down" && index === recordingQuestions.length - 1)
+    ) {
+      return;
+    }
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    const reordered = [...recordingQuestions];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+    setRecordingQuestions(reordered);
+  };
+
+  const updateRecordingQuestionText = (index: number, newText: string) => {
+    setRecordingQuestions((prev) =>
+      prev.map((q, i) => (i === index ? { ...q, text: newText } : q)),
+    );
+  };
+
+  const loadPresetQuestions = (type: "saas" | "case_study" | "clear") => {
+    if (type === "saas") {
+      setRecordingQuestions([
+        { id: `rq_${Date.now()}_1`, text: "Who are you and what company do you represent?" },
+        { id: `rq_${Date.now()}_2`, text: "What specific challenge were you looking to solve?" },
+        { id: `rq_${Date.now()}_3`, text: "What results or measurable outcome have you achieved?" },
+      ]);
+    } else if (type === "case_study") {
+      setRecordingQuestions([
+        { id: `rq_${Date.now()}_1`, text: "What was your workflow like before using our product?" },
+        { id: `rq_${Date.now()}_2`, text: "What was your primary hesitation before signing up?" },
+        { id: `rq_${Date.now()}_3`, text: "What feature or aspect surprised you the most?" },
+        { id: `rq_${Date.now()}_4`, text: "What would you tell someone on the fence about trying it?" },
+      ]);
+    } else {
+      setRecordingQuestions([]);
+    }
   };
 
   const handleSave = async () => {
@@ -250,15 +488,24 @@ export function FormBuilder({
       accentColor,
       theme,
       isPublished,
+      isMultiStep: Boolean(flowConfig.enabled),
+      flowConfigJson: flowConfig.enabled ? JSON.stringify(flowConfig) : null,
+      customCss: customCss.trim() || undefined,
+      videoInstructions: videoInstructions.trim() || undefined,
+      recordingQuestionsJson:
+        recordingQuestions.length > 0 ? JSON.stringify(recordingQuestions) : null,
       fields: customFields.map((f, idx) => ({
         id: f.id,
         label: f.label.trim() || `Question ${idx + 1}`,
         description: f.description?.trim() || null,
+        helpText: f.helpText?.trim() || null,
         placeholder: f.placeholder?.trim() || null,
         type: f.type,
         isRequired: f.isRequired,
-        orderIndex: idx,
+        orderIndex: f.orderIndex ?? idx,
         optionsJson: f.optionsJson || null,
+        conditionsJson: f.conditionsJson || null,
+        validationRulesJson: f.validationRulesJson || null,
       })),
     };
 
@@ -330,6 +577,12 @@ export function FormBuilder({
     accentColor,
     theme,
     isPublished,
+    isMultiStep: Boolean(flowConfig.enabled),
+    flowConfigJson: flowConfig.enabled ? JSON.stringify(flowConfig) : null,
+    customCss,
+    videoInstructions,
+    recordingQuestionsJson:
+      recordingQuestions.length > 0 ? JSON.stringify(recordingQuestions) : null,
     fields: customFields,
   };
 
@@ -358,7 +611,27 @@ export function FormBuilder({
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTemplateModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 hover:bg-warm-100 transition-colors shadow-2xs"
+            title="Choose from pre-built templates"
+          >
+            <LayoutTemplate size={13} className="text-brand-600" />
+            <span>Templates</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSaveTemplateModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-700 hover:bg-warm-100 transition-colors shadow-2xs"
+            title="Save current form layout as a reusable template"
+          >
+            <Bookmark size={13} className="text-amber-600" />
+            <span className="hidden sm:inline">Save as Template</span>
+          </button>
+
           <button
             type="button"
             onClick={onCancel}
@@ -429,6 +702,25 @@ export function FormBuilder({
             >
               <Plus size={13} />
               <span>Questions ({customFields.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("flow")}
+              className={cn(
+                "rounded-t-lg px-3.5 py-2 text-xs font-semibold transition-colors flex items-center gap-1.5",
+                activeTab === "flow"
+                  ? "bg-white text-ink-900 border-t border-x border-line shadow-2xs -mb-px"
+                  : "text-ink-600 hover:text-ink-900",
+              )}
+            >
+              <GitFork size={13} />
+              <span>Form Flow</span>
+              {flowConfig.enabled && (
+                <span className="rounded-full bg-brand-100 text-brand-700 px-1.5 py-0.5 text-[9px] font-bold">
+                  Multi-Step
+                </span>
+              )}
             </button>
 
             <button
@@ -570,18 +862,175 @@ export function FormBuilder({
                   </div>
 
                   {allowVideo && (
-                    <div className="pt-2">
-                      <label className="block text-[11px] font-semibold text-ink-800 mb-1">
-                        Max Video Duration (seconds)
-                      </label>
-                      <input
-                        type="number"
-                        min={15}
-                        max={300}
-                        value={maxVideoDurationSeconds}
-                        onChange={(e) => setMaxVideoDurationSeconds(Number(e.target.value))}
-                        className="w-32 rounded-lg border border-line p-1.5 text-xs text-ink-900"
-                      />
+                    <div className="pt-3 border-t border-line/70 space-y-4">
+                      {/* Max Duration Controls */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[11px] font-semibold text-ink-900">
+                            Maximum Recording Duration
+                          </label>
+                          <span className="text-[10px] text-ink-500 font-mono">
+                            {maxVideoDurationSeconds} seconds
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {[60, 120, 180, 300].map((dur) => (
+                            <button
+                              key={dur}
+                              type="button"
+                              onClick={() => setMaxVideoDurationSeconds(dur)}
+                              className={cn(
+                                "flex-1 rounded-lg py-1 px-2 text-[11px] font-semibold transition-colors border",
+                                maxVideoDurationSeconds === dur
+                                  ? "bg-brand-50 border-brand-300 text-brand-700 shadow-2xs"
+                                  : "bg-white border-line text-ink-700 hover:bg-warm-50",
+                              )}
+                            >
+                              {dur}s
+                            </button>
+                          ))}
+                          <div className="w-20">
+                            <input
+                              type="number"
+                              min={15}
+                              max={300}
+                              value={maxVideoDurationSeconds}
+                              onChange={(e) => setMaxVideoDurationSeconds(Number(e.target.value))}
+                              className="w-full rounded-lg border border-line p-1 text-[11px] text-center text-ink-900"
+                              title="Custom seconds"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Custom Pre-Recording Instructions */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-ink-900 mb-1">
+                          Custom Pre-Recording Instructions
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={videoInstructions}
+                          onChange={(e) => setVideoInstructions(e.target.value)}
+                          placeholder="e.g. Please find a quiet place with good lighting. Speak naturally from the heart and don't worry about being perfect!"
+                          className="w-full rounded-lg border border-line p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 leading-relaxed"
+                        />
+                        <p className="mt-1 text-[10px] text-ink-500">
+                          Displayed to respondents before recording begins to help them prepare.
+                        </p>
+                      </div>
+
+                      {/* Configurable Recording Questions (Teleprompter Prompts) */}
+                      <div className="space-y-2 pt-2 border-t border-line/60">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-semibold text-ink-900 flex items-center gap-1.5">
+                            <Video size={12} className="text-brand-600" />
+                            <span>Guided Recording Questions ({recordingQuestions.length})</span>
+                          </label>
+                          <div className="flex items-center gap-1 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => loadPresetQuestions("saas")}
+                              className="text-brand-600 hover:underline"
+                            >
+                              SaaS Preset
+                            </button>
+                            <span className="text-ink-300">&bull;</span>
+                            <button
+                              type="button"
+                              onClick={() => loadPresetQuestions("case_study")}
+                              className="text-brand-600 hover:underline"
+                            >
+                              Case Study
+                            </button>
+                            <span className="text-ink-300">&bull;</span>
+                            <button
+                              type="button"
+                              onClick={() => loadPresetQuestions("clear")}
+                              className="text-ink-400 hover:text-rose-600"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-ink-500 leading-normal">
+                          Shown as an interactive live teleprompter during recording so respondents can glance at questions without looking away.
+                        </p>
+
+                        {/* Questions List with Reordering */}
+                        <div className="space-y-1.5">
+                          {recordingQuestions.map((q, idx) => (
+                            <div
+                              key={q.id || idx}
+                              className="flex items-center gap-1.5 rounded-lg border border-line bg-white p-1.5 shadow-2xs"
+                            >
+                              <span className="h-4 w-4 rounded-full bg-warm-100 text-ink-600 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                {idx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                value={q.text}
+                                onChange={(e) => updateRecordingQuestionText(idx, e.target.value)}
+                                className="flex-1 text-xs text-ink-900 bg-transparent focus:outline-none"
+                                placeholder={`Question ${idx + 1}...`}
+                              />
+                              <div className="flex items-center gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => moveRecordingQuestion(idx, "up")}
+                                  className="p-1 text-ink-400 hover:text-ink-800 disabled:opacity-20 transition-colors"
+                                  title="Move Up"
+                                >
+                                  <ArrowUp size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === recordingQuestions.length - 1}
+                                  onClick={() => moveRecordingQuestion(idx, "down")}
+                                  className="p-1 text-ink-400 hover:text-ink-800 disabled:opacity-20 transition-colors"
+                                  title="Move Down"
+                                >
+                                  <ArrowDown size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeRecordingQuestion(idx)}
+                                  className="p-1 text-ink-400 hover:text-rose-600 transition-colors ml-0.5"
+                                  title="Remove question"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Add Question Input */}
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <input
+                            type="text"
+                            value={newQuestionInput}
+                            onChange={(e) => setNewQuestionInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                addRecordingQuestion();
+                              }
+                            }}
+                            placeholder="Add a new guided prompt..."
+                            className="flex-1 rounded-lg border border-line p-1.5 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={addRecordingQuestion}
+                            className="inline-flex items-center gap-1 rounded-lg bg-brand-500 hover:bg-brand-600 text-white px-3 py-1.5 text-xs font-semibold shadow-2xs transition-colors shrink-0"
+                          >
+                            <Plus size={12} />
+                            <span>Add</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1053,9 +1502,23 @@ export function FormBuilder({
                               <span className="text-xs font-semibold text-ink-900">
                                 #{index + 1} &bull; {typeDef?.label}
                               </span>
+                              {field.validationRulesJson && (
+                                <span className="rounded bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[9px] font-semibold border border-amber-200">
+                                  Rules Active
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setEditingFieldModalIndex(index)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2 py-1 text-[11px] font-semibold text-ink-700 hover:text-brand-600 hover:border-brand-300 transition-colors mr-1"
+                                title="Configure advanced field rules & validation"
+                              >
+                                <Sliders size={11} className="text-brand-600" />
+                                <span>Advanced</span>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => moveField(index, "up")}
@@ -1103,10 +1566,25 @@ export function FormBuilder({
                               />
                             </div>
 
+                            <div>
+                              <label className="block text-[11px] font-semibold text-ink-800 mb-1">
+                                Contextual Help Text (Optional)
+                              </label>
+                              <input
+                                type="text"
+                                value={field.helpText || ""}
+                                onChange={(e) =>
+                                  updateCustomField(index, { helpText: e.target.value })
+                                }
+                                placeholder="Subtle guidance displayed beneath the input..."
+                                className="w-full rounded-lg border border-line p-1.5 text-xs text-ink-900"
+                              />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-2">
                               <div>
                                 <label className="block text-[11px] font-semibold text-ink-800 mb-1">
-                                  Help Text (Optional)
+                                  Secondary Description (Optional)
                                 </label>
                                 <input
                                   type="text"
@@ -1135,13 +1613,26 @@ export function FormBuilder({
                               </div>
                             </div>
 
-                            {/* Options editor for SINGLE_CHOICE / MULTIPLE_CHOICE */}
+                            {/* Options editor for choice / dropdown fields */}
                             {(field.type === "SINGLE_CHOICE" ||
-                              field.type === "MULTIPLE_CHOICE") && (
+                              field.type === "MULTIPLE_CHOICE" ||
+                              field.type === "DROPDOWN" ||
+                              field.type === "CUSTOMER_ROLE" ||
+                              field.type === "COMPANY_SIZE" ||
+                              field.type === "PRODUCT_PLAN") && (
                               <div>
-                                <label className="block text-[11px] font-semibold text-ink-800 mb-1">
-                                  Choices (Comma-separated)
-                                </label>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="block text-[11px] font-semibold text-ink-800">
+                                    Configured Choices (Comma-separated)
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingFieldModalIndex(index)}
+                                    className="text-[10px] text-brand-600 hover:underline font-semibold"
+                                  >
+                                    Edit via Advanced Modal &rarr;
+                                  </button>
+                                </div>
                                 <input
                                   type="text"
                                   value={
@@ -1168,9 +1659,6 @@ export function FormBuilder({
                                   placeholder="Option 1, Option 2, Option 3"
                                   className="w-full rounded-lg border border-line p-1.5 text-xs text-ink-900"
                                 />
-                                <p className="mt-1 text-[10px] text-ink-400">
-                                  Separate each choice with a comma.
-                                </p>
                               </div>
                             )}
 
@@ -1197,7 +1685,17 @@ export function FormBuilder({
               </div>
             )}
 
-            {/* 4. APPEARANCE & BRANDING TAB */}
+            {/* 4. FORM FLOW & CONDITIONAL LOGIC TAB */}
+            {activeTab === "flow" && (
+              <FormFlowEditor
+                flowConfig={flowConfig}
+                onChange={setFlowConfig}
+                availableCustomFields={customFields}
+                accentColor={accentColor}
+              />
+            )}
+
+            {/* 5. APPEARANCE & BRANDING TAB */}
             {activeTab === "appearance" && (
               <div className="space-y-5">
                 <div>
@@ -1310,6 +1808,52 @@ export function FormBuilder({
                     ))}
                   </div>
                 </div>
+
+                {/* Form-Level Custom CSS */}
+                <div className="space-y-2.5 pt-3 border-t border-line/60">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-xs font-semibold text-ink-900">
+                        Form-Level Custom CSS
+                      </label>
+                      <span className="text-[10px] text-ink-500">
+                        Scoped automatically to <code>.praise-form-scope</code>. Scripts and unsafe HTML are sanitized.
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleRestoreDefaultStyling}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-600 hover:text-rose-600 transition-colors"
+                      title="Reset custom CSS and theme styles to system default"
+                    >
+                      <RotateCcw size={12} />
+                      <span>Restore Default Styling</span>
+                    </button>
+                  </div>
+
+                  <textarea
+                    rows={6}
+                    value={customCss}
+                    onChange={(e) => setCustomCss(e.target.value)}
+                    placeholder={`.praise-form-scope .praise-card {\n  border-radius: 20px;\n}\n.praise-form-scope button {\n  font-weight: 700;\n}`}
+                    className="w-full rounded-xl border border-line bg-ink-900 text-amber-300 font-mono text-[11px] p-3 focus:outline-none focus:ring-1 focus:ring-brand-500 leading-relaxed placeholder:text-ink-600"
+                  />
+
+                  {sanitizeCss(customCss).warnings.length > 0 && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 space-y-1">
+                      <div className="font-semibold flex items-center gap-1">
+                        <AlertCircle size={12} className="text-amber-600" />
+                        <span>Restricted CSS Constructs Detected</span>
+                      </div>
+                      <ul className="list-disc list-inside space-y-0.5 text-[10px]">
+                        {sanitizeCss(customCss).warnings.map((w, idx) => (
+                          <li key={idx}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1323,6 +1867,41 @@ export function FormBuilder({
           />
         </div>
       </div>
+
+      {/* Template Selector Modal */}
+      {templateModalOpen && activeWorkspace?.id && (
+        <TemplateSelectorModal
+          isOpen={templateModalOpen}
+          onClose={() => setTemplateModalOpen(false)}
+          workspaceId={activeWorkspace.id}
+          onSelectTemplate={handleApplyTemplate}
+        />
+      )}
+
+      {/* Save Current Form As Template Modal */}
+      {saveTemplateModalOpen && activeWorkspace?.id && (
+        <SaveTemplateModal
+          isOpen={saveTemplateModalOpen}
+          onClose={() => setSaveTemplateModalOpen(false)}
+          workspaceId={activeWorkspace.id}
+          formConfigPayload={previewData}
+        />
+      )}
+
+      {/* Advanced Field Modal */}
+      {editingFieldModalIndex !== null && customFields[editingFieldModalIndex] && (
+        <AdvancedFieldModal
+          isOpen={editingFieldModalIndex !== null}
+          onClose={() => setEditingFieldModalIndex(null)}
+          field={customFields[editingFieldModalIndex]}
+          fieldIndex={editingFieldModalIndex}
+          totalFields={customFields.length}
+          onSave={(updatedField) => {
+            updateCustomField(editingFieldModalIndex, updatedField);
+            setEditingFieldModalIndex(null);
+          }}
+        />
+      )}
     </div>
   );
 }

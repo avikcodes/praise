@@ -1,6 +1,6 @@
 import path from "path";
 import crypto from "crypto";
-import { MediaType } from "@/types/media";
+import type { MediaType } from "../../types/media.ts";
 
 // Default size limits (can be customized via environment variables)
 export const MAX_IMAGE_SIZE_BYTES =
@@ -8,6 +8,9 @@ export const MAX_IMAGE_SIZE_BYTES =
 
 export const MAX_VIDEO_SIZE_BYTES =
   Number(process.env.PRAISE_MAX_VIDEO_SIZE_BYTES) || 100 * 1024 * 1024; // 100 MB
+
+export const MAX_AUDIO_SIZE_BYTES =
+  Number(process.env.PRAISE_MAX_AUDIO_SIZE_BYTES) || 25 * 1024 * 1024; // 25 MB
 
 export type DetectedFileType = {
   mediaType: MediaType;
@@ -19,8 +22,8 @@ export type DetectedFileType = {
  * Validates actual binary file signatures (magic bytes) to prevent
  * executable masquerading, polyglots, and script uploads.
  */
-export function detectFileSignature(buffer: Buffer): DetectedFileType | null {
-  if (!buffer || buffer.length < 8) {
+export function detectFileSignature(buffer: Buffer, typeHint?: string): DetectedFileType | null {
+  if (!buffer || buffer.length < 4) {
     return null;
   }
 
@@ -30,7 +33,7 @@ export function detectFileSignature(buffer: Buffer): DetectedFileType | null {
     return null;
   }
   // Linux ELF binary -> \x7fELF
-  if (buffer[0] === 0x7f && buffer[1] === 0x45 && buffer[2] === 0x4c && buffer[3] === 0x46) {
+  if (buffer.length >= 4 && buffer[0] === 0x7f && buffer[1] === 0x45 && buffer[2] === 0x4c && buffer[3] === 0x46) {
     return null;
   }
   // Script execution header -> #!
@@ -100,7 +103,68 @@ export function detectFileSignature(buffer: Buffer): DetectedFileType | null {
     };
   }
 
-  // 6. WebM Video: EBML header 1A 45 DF A3
+  // 6. WAV Audio: RIFF (bytes 0..3) ... WAVE (bytes 8..11)
+  if (
+    buffer.length >= 12 &&
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x41 &&
+    buffer[10] === 0x56 &&
+    buffer[11] === 0x45
+  ) {
+    return {
+      mediaType: "AUDIO",
+      mimeType: "audio/wav",
+      extension: ".wav",
+    };
+  }
+
+  // 7. Ogg Audio / Opus: OggS (4F 67 67 53)
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x4f &&
+    buffer[1] === 0x67 &&
+    buffer[2] === 0x67 &&
+    buffer[3] === 0x53
+  ) {
+    return {
+      mediaType: "AUDIO",
+      mimeType: "audio/ogg",
+      extension: ".ogg",
+    };
+  }
+
+  // 8. MP3 Audio: ID3 tag (49 44 33) or sync frames (FF FB / FF F3 / FF F2)
+  if (
+    (buffer.length >= 3 && buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) ||
+    (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] === 0xfb || buffer[1] === 0xf3 || buffer[1] === 0xf2))
+  ) {
+    return {
+      mediaType: "AUDIO",
+      mimeType: "audio/mpeg",
+      extension: ".mp3",
+    };
+  }
+
+  // 9. FLAC Audio: fLaC (66 4C 61 43)
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x66 &&
+    buffer[1] === 0x4c &&
+    buffer[2] === 0x61 &&
+    buffer[3] === 0x43
+  ) {
+    return {
+      mediaType: "AUDIO",
+      mimeType: "audio/flac",
+      extension: ".flac",
+    };
+  }
+
+  // 10. WebM Video / Audio: EBML header 1A 45 DF A3
   if (
     buffer.length >= 16 &&
     buffer[0] === 0x1a &&
@@ -108,6 +172,13 @@ export function detectFileSignature(buffer: Buffer): DetectedFileType | null {
     buffer[2] === 0xdf &&
     buffer[3] === 0xa3
   ) {
+    if (typeHint === "audio") {
+      return {
+        mediaType: "AUDIO",
+        mimeType: "audio/webm",
+        extension: ".weba",
+      };
+    }
     return {
       mediaType: "VIDEO",
       mimeType: "video/webm",
@@ -115,7 +186,7 @@ export function detectFileSignature(buffer: Buffer): DetectedFileType | null {
     };
   }
 
-  // 7. MP4 / ISO Base Media / QuickTime: 'ftyp' at offset 4
+  // 11. MP4 / ISO Base Media / QuickTime / M4A: 'ftyp' at offset 4
   if (
     buffer.length >= 16 &&
     buffer[4] === 0x66 && // 'f'
@@ -124,6 +195,13 @@ export function detectFileSignature(buffer: Buffer): DetectedFileType | null {
     buffer[7] === 0x70    // 'p'
   ) {
     const brand = buffer.toString("utf8", 8, 12).toLowerCase();
+    if (brand.startsWith("m4a") || brand.startsWith("mp4a") || typeHint === "audio") {
+      return {
+        mediaType: "AUDIO",
+        mimeType: "audio/mp4",
+        extension: ".m4a",
+      };
+    }
     if (brand.startsWith("qt")) {
       return {
         mediaType: "VIDEO",
@@ -147,18 +225,19 @@ export function detectFileSignature(buffer: Buffer): DetectedFileType | null {
  */
 export function validateUploadBuffer(
   buffer: Buffer,
-  allowedTypes: MediaType[] = ["IMAGE", "VIDEO"],
+  allowedTypes: MediaType[] = ["IMAGE", "VIDEO", "AUDIO"],
+  typeHint?: string,
 ): { valid: boolean; error?: string; detected?: DetectedFileType } {
   if (!buffer || buffer.length === 0) {
     return { valid: false, error: "The submitted file is empty." };
   }
 
-  const detected = detectFileSignature(buffer);
+  const detected = detectFileSignature(buffer, typeHint);
   if (!detected) {
     return {
       valid: false,
       error:
-        "Invalid file format. Uploaded file does not match any accepted image or video signature.",
+        "Invalid file format. Uploaded file does not match any accepted image, video, or audio signature.",
     };
   }
 
@@ -171,7 +250,11 @@ export function validateUploadBuffer(
 
   // Size limit validation
   const maxBytes =
-    detected.mediaType === "IMAGE" ? MAX_IMAGE_SIZE_BYTES : MAX_VIDEO_SIZE_BYTES;
+    detected.mediaType === "IMAGE"
+      ? MAX_IMAGE_SIZE_BYTES
+      : detected.mediaType === "AUDIO"
+      ? MAX_AUDIO_SIZE_BYTES
+      : MAX_VIDEO_SIZE_BYTES;
   const maxMb = Math.round(maxBytes / (1024 * 1024));
 
   if (buffer.length > maxBytes) {

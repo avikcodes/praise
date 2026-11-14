@@ -14,6 +14,10 @@ import {
   serializeConsentPayload,
   StructuredConsentPayload,
 } from "@/lib/privacy/consent";
+import {
+  getTraversedVisibleFieldIds,
+  FormFlowConfig,
+} from "@/lib/forms/flow-engine";
 
 // Basic email regex validator
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -59,6 +63,7 @@ export async function POST(request: Request) {
       allowCompanyDisplay = true,
       customResponses = {},
       mediaAssetId,
+      recordingQuestionsJson,
       // Anti-abuse tokens
       honeypot,
       formLoadedAt,
@@ -128,14 +133,43 @@ export async function POST(request: Request) {
     }
 
     // 4. Server-Side Field Validation according to configured form options
-    if (form.collectName && form.nameRequired && !customerName?.trim()) {
+    // In multi-step forms, validate ONLY fields that were visible and traversed
+    let applicableVisibleFields: Set<string> | null = null;
+    if (form.isMultiStep && form.flowConfigJson) {
+      try {
+        const parsedFlow: FormFlowConfig = JSON.parse(form.flowConfigJson);
+        if (parsedFlow && parsedFlow.enabled) {
+          const formValues: Record<string, unknown> = {
+            rating: Number(rating),
+            content,
+            name: customerName,
+            email: customerEmail,
+            company: customerCompany,
+            title: customerTitle,
+            website: customerWebsite,
+            consent: isConsentGranted,
+            ...customResponses,
+          };
+          applicableVisibleFields = getTraversedVisibleFieldIds(parsedFlow, formValues);
+        }
+      } catch {
+        // Fallback to standard validation if parsing fails
+      }
+    }
+
+    const isFieldApplicable = (fieldId: string) => {
+      if (!applicableVisibleFields) return true;
+      return applicableVisibleFields.has(fieldId);
+    };
+
+    if (isFieldApplicable("name") && form.collectName && form.nameRequired && !customerName?.trim()) {
       return NextResponse.json(
         { error: "Your full name is required." },
         { status: 400 },
       );
     }
 
-    if (form.collectEmail) {
+    if (isFieldApplicable("email") && form.collectEmail) {
       if (form.emailRequired && !customerEmail?.trim()) {
         return NextResponse.json(
           { error: "A valid email address is required." },
@@ -150,21 +184,21 @@ export async function POST(request: Request) {
       }
     }
 
-    if (form.collectCompany && form.companyRequired && !customerCompany?.trim()) {
+    if (isFieldApplicable("company") && form.collectCompany && form.companyRequired && !customerCompany?.trim()) {
       return NextResponse.json(
         { error: "Company name is required." },
         { status: 400 },
       );
     }
 
-    if (form.collectJobTitle && form.jobTitleRequired && !customerTitle?.trim()) {
+    if (isFieldApplicable("title") && form.collectJobTitle && form.jobTitleRequired && !customerTitle?.trim()) {
       return NextResponse.json(
         { error: "Job title is required." },
         { status: 400 },
       );
     }
 
-    if (form.collectWebsite && form.websiteRequired && !customerWebsite?.trim()) {
+    if (isFieldApplicable("website") && form.collectWebsite && form.websiteRequired && !customerWebsite?.trim()) {
       return NextResponse.json(
         { error: "Website or profile URL is required." },
         { status: 400 },
@@ -172,7 +206,7 @@ export async function POST(request: Request) {
     }
 
     const numericRating = Number(rating);
-    if (form.collectRating && form.ratingRequired) {
+    if (isFieldApplicable("rating") && form.collectRating && form.ratingRequired) {
       if (!numericRating || numericRating < 1 || numericRating > 5) {
         return NextResponse.json(
           { error: "Please select an overall rating between 1 and 5 stars." },
@@ -181,7 +215,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (form.collectText && type === "TEXT") {
+    if (isFieldApplicable("content") && form.collectText && type === "TEXT") {
       if (form.textRequired && !content?.trim()) {
         return NextResponse.json(
           { error: "Testimonial text content is required." },
@@ -190,29 +224,138 @@ export async function POST(request: Request) {
       }
     }
 
-    if (form.collectConsent && form.consentRequired && !isConsentGranted) {
+    if (isFieldApplicable("consent") && form.collectConsent && form.consentRequired && !isConsentGranted) {
       return NextResponse.json(
         { error: "You must grant permission to submit your feedback." },
         { status: 400 },
       );
     }
 
-    // Validate required custom fields
+    // Validate required custom fields and validation rules
     if (form.fields && form.fields.length > 0) {
       for (const field of form.fields) {
-        if (field.isRequired) {
-          const val = customResponses[field.id];
-          const isEmpty =
-            val === undefined ||
-            val === null ||
-            (typeof val === "string" && !val.trim()) ||
-            (Array.isArray(val) && val.length === 0);
+        if (!isFieldApplicable(field.id)) continue;
 
-          if (isEmpty) {
-            return NextResponse.json(
-              { error: `Question "${field.label}" is required.` },
-              { status: 400 },
-            );
+        const val = customResponses[field.id];
+        const isEmpty =
+          val === undefined ||
+          val === null ||
+          (typeof val === "string" && !val.trim()) ||
+          (Array.isArray(val) && val.length === 0);
+
+        if (field.isRequired && isEmpty) {
+          return NextResponse.json(
+            { error: `Question "${field.label}" is required.` },
+            { status: 400 },
+          );
+        }
+
+        // Enforce validation rules
+        if (!isEmpty && field.validationRulesJson) {
+          try {
+            const rules = JSON.parse(field.validationRulesJson);
+
+            // Numeric range
+            if (field.type === "NUMBER") {
+              const num = Number(val);
+              if (isNaN(num)) {
+                return NextResponse.json(
+                  {
+                    error:
+                      rules.customErrorMessage ||
+                      `Question "${field.label}" must be a number.`,
+                  },
+                  { status: 400 },
+                );
+              }
+              if (rules.minNumeric !== undefined && num < rules.minNumeric) {
+                return NextResponse.json(
+                  {
+                    error:
+                      rules.customErrorMessage ||
+                      `Question "${field.label}" must be at least ${rules.minNumeric}.`,
+                  },
+                  { status: 400 },
+                );
+              }
+              if (rules.maxNumeric !== undefined && num > rules.maxNumeric) {
+                return NextResponse.json(
+                  {
+                    error:
+                      rules.customErrorMessage ||
+                      `Question "${field.label}" cannot exceed ${rules.maxNumeric}.`,
+                  },
+                  { status: 400 },
+                );
+              }
+            }
+
+            // String length and pattern
+            if (typeof val === "string") {
+              if (rules.minLength !== undefined && val.length < rules.minLength) {
+                return NextResponse.json(
+                  {
+                    error:
+                      rules.customErrorMessage ||
+                      `Question "${field.label}" must be at least ${rules.minLength} characters.`,
+                  },
+                  { status: 400 },
+                );
+              }
+              if (rules.maxLength !== undefined && val.length > rules.maxLength) {
+                return NextResponse.json(
+                  {
+                    error:
+                      rules.customErrorMessage ||
+                      `Question "${field.label}" cannot exceed ${rules.maxLength} characters.`,
+                  },
+                  { status: 400 },
+                );
+              }
+              if (rules.pattern) {
+                try {
+                  const reg = new RegExp(rules.pattern);
+                  if (!reg.test(val)) {
+                    return NextResponse.json(
+                      {
+                        error:
+                          rules.customErrorMessage ||
+                          `Question "${field.label}" format is invalid.`,
+                      },
+                      { status: 400 },
+                    );
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+            }
+
+            // Date range
+            if (field.type === "DATE" && typeof val === "string") {
+              if (rules.minDate && val < rules.minDate) {
+                return NextResponse.json(
+                  {
+                    error:
+                      rules.customErrorMessage ||
+                      `Question "${field.label}" cannot be earlier than ${rules.minDate}.`,
+                  },
+                  { status: 400 },
+                );
+              }
+              if (rules.maxDate && val > rules.maxDate) {
+                return NextResponse.json(
+                  {
+                    error:
+                      rules.customErrorMessage ||
+                      `Question "${field.label}" cannot be later than ${rules.maxDate}.`,
+                  },
+                  { status: 400 },
+                );
+              }
+            }
+          } catch {
+            // ignore JSON parse errors
           }
         }
       }
@@ -325,6 +468,8 @@ export async function POST(request: Request) {
           type: type === "VIDEO" ? "VIDEO" : type === "AUDIO" ? "AUDIO" : "TEXT",
           status: "PENDING",
           isFeatured: false,
+          recordingQuestionsJson:
+            recordingQuestionsJson || form.recordingQuestionsJson || null,
         },
       });
 

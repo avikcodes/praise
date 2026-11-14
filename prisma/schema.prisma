@@ -44,6 +44,17 @@ enum FormFieldType {
   RATING
   SELECT
   BOOLEAN
+  // Version 2 Advanced Field Types
+  NUMBER
+  PHONE
+  DATE
+  DROPDOWN
+  FILE_UPLOAD
+  WEBSITE
+  LONG_FORM
+  CUSTOMER_ROLE
+  COMPANY_SIZE
+  PRODUCT_PLAN
 }
 
 enum MediaType {
@@ -133,6 +144,7 @@ model Workspace {
   widgets        Widget[]
   widgetEvents   WidgetEvent[]
   apiKeys        ApiKey[]
+  formTemplates  FormTemplate[]
 
   @@index([slug])
   @@map("workspaces")
@@ -275,6 +287,17 @@ model CollectionForm {
   accentColor             String?       @default("#7049D8")
   theme                   String?       @default("warm")
 
+  // Advanced Form Flows (Multi-Step & Conditional Logic)
+  isMultiStep             Boolean       @default(false)
+  flowConfigJson          String?
+
+  // Form-Level Custom CSS (Scoped & Sanitized)
+  customCss               String?
+
+  // Guided Video Recording Controls
+  videoInstructions      String?
+  recordingQuestionsJson String?
+
   isPublished             Boolean       @default(true)
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
@@ -291,22 +314,45 @@ model CollectionForm {
 }
 
 model FormField {
-  id          String        @id @default(cuid())
-  formId      String
-  label       String
-  description String?
-  placeholder String?
-  type        FormFieldType @default(SHORT_TEXT)
-  isRequired  Boolean       @default(false)
-  orderIndex  Int           @default(0)
-  optionsJson String?       // For SINGLE_CHOICE / MULTIPLE_CHOICE (JSON string array)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                  String        @id @default(cuid())
+  formId              String
+  label               String
+  description         String?
+  helpText            String?
+  placeholder         String?
+  type                FormFieldType @default(SHORT_TEXT)
+  isRequired          Boolean       @default(false)
+  orderIndex          Int           @default(0)
+  optionsJson         String?       // For SINGLE_CHOICE / MULTIPLE_CHOICE / DROPDOWN / CUSTOMER_ROLE / COMPANY_SIZE / PRODUCT_PLAN (JSON string array)
+  conditionsJson      String?       // Conditional visibility rules (JSON string)
+  validationRulesJson String?       // Advanced validation rules (min, max, regex, file extensions, max size, etc.)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
-  form        CollectionForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  form                CollectionForm @relation(fields: [formId], references: [id], onDelete: Cascade)
 
   @@index([formId])
   @@map("form_fields")
+}
+
+model FormTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  name        String
+  description String?
+  category    String   @default("GENERAL") // SAAS, ECOMMERCE, SERVICES, HR, EVENT, GENERAL
+  icon        String?  @default("file-text")
+  isSystem    Boolean  @default(false)
+  configJson  String   // JSON string of full template configuration & form fields
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([category])
+  @@map("form_templates")
 }
 
 // -----------------------------------------------------------------------------
@@ -324,6 +370,7 @@ model Testimonial {
   type           TestimonialType   @default(TEXT)
   status         TestimonialStatus @default(PENDING)
   isFeatured     Boolean           @default(false)
+  recordingQuestionsJson String?
   submittedAt    DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 

@@ -112,6 +112,11 @@ export async function PUT(request: Request, context: RouteParams) {
       theme,
       isPublished,
       projectId,
+      isMultiStep,
+      flowConfigJson,
+      customCss,
+      videoInstructions,
+      recordingQuestionsJson,
       fields,
     } = validated.data;
 
@@ -183,6 +188,11 @@ export async function PUT(request: Request, context: RouteParams) {
           customLogoUrl: customLogoUrl !== undefined ? (customLogoUrl || null) : existing.customLogoUrl,
           accentColor: accentColor ?? existing.accentColor,
           theme: theme ?? existing.theme,
+          isMultiStep: isMultiStep !== undefined ? isMultiStep : existing.isMultiStep,
+          flowConfigJson: flowConfigJson !== undefined ? flowConfigJson : existing.flowConfigJson,
+          customCss: customCss !== undefined ? customCss : existing.customCss,
+          videoInstructions: videoInstructions !== undefined ? videoInstructions : existing.videoInstructions,
+          recordingQuestionsJson: recordingQuestionsJson !== undefined ? recordingQuestionsJson : existing.recordingQuestionsJson,
           isPublished: isPublished ?? existing.isPublished,
           projectId: projectId !== undefined ? projectId : existing.projectId,
         },
@@ -212,11 +222,14 @@ export async function PUT(request: Request, context: RouteParams) {
               data: {
                 label: f.label,
                 description: f.description || null,
+                helpText: f.helpText || null,
                 placeholder: f.placeholder || null,
                 type: f.type,
                 isRequired: f.isRequired,
                 orderIndex,
                 optionsJson: f.optionsJson || null,
+                conditionsJson: f.conditionsJson || null,
+                validationRulesJson: f.validationRulesJson || null,
               },
             });
           } else {
@@ -225,11 +238,14 @@ export async function PUT(request: Request, context: RouteParams) {
                 formId,
                 label: f.label,
                 description: f.description || null,
+                helpText: f.helpText || null,
                 placeholder: f.placeholder || null,
                 type: f.type,
                 isRequired: f.isRequired,
                 orderIndex,
                 optionsJson: f.optionsJson || null,
+                conditionsJson: f.conditionsJson || null,
+                validationRulesJson: f.validationRulesJson || null,
               },
             });
           }

@@ -23,15 +23,17 @@ export async function uploadMediaAsset({
   buffer,
   workspaceId,
   testimonialId = null,
-  allowedTypes = ["IMAGE", "VIDEO"],
+  allowedTypes = ["IMAGE", "VIDEO", "AUDIO"],
+  typeHint = null,
 }: {
   buffer: Buffer;
   workspaceId: string;
   testimonialId?: string | null;
   allowedTypes?: MediaType[];
+  typeHint?: string | null;
 }): Promise<MediaAssetDetail> {
   // 1. Content & signature validation
-  const validation = validateUploadBuffer(buffer, allowedTypes);
+  const validation = validateUploadBuffer(buffer, allowedTypes, typeHint || undefined);
   if (!validation.valid || !validation.detected) {
     throw new MediaUploadError(validation.error || "File validation failed.", 400);
   }

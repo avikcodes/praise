@@ -71,6 +71,7 @@ export type TestimonialItem = {
   type: "TEXT" | "VIDEO" | "AUDIO";
   status: "PENDING" | "APPROVED" | "REJECTED" | "ARCHIVED";
   isFeatured: boolean;
+  recordingQuestionsJson?: string | null;
   submittedAt: string;
   customer?: {
     id: string;
@@ -1962,6 +1963,40 @@ function TestimonialsContent() {
                   </div>
                 </div>
               )}
+
+            {/* Guided Recording Prompts Connected to Testimonial */}
+            {selectedTestimonial.recordingQuestionsJson && (
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-brand-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Video size={12} className="text-brand-600" />
+                  <span>Guided Recording Prompts Answered</span>
+                </label>
+                <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3 space-y-2 text-xs">
+                  {(() => {
+                    try {
+                      const questions = JSON.parse(selectedTestimonial.recordingQuestionsJson);
+                      if (Array.isArray(questions)) {
+                        return (
+                          <div className="space-y-1.5">
+                            {questions.map((q: { id?: string; text?: string; label?: string } | string, idx: number) => (
+                              <div key={idx} className="flex items-start gap-2 text-ink-800">
+                                <span className="h-4 w-4 rounded-full bg-brand-100 text-brand-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                                  {idx + 1}
+                                </span>
+                                <span>{typeof q === "string" ? q : q.text || q.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+                    } catch {
+                      return <span className="text-ink-600">{selectedTestimonial.recordingQuestionsJson}</span>;
+                    }
+                    return null;
+                  })()}
+                </div>
+              </div>
+            )}
 
             {/* Project & Form Details */}
             <div className="grid gap-3 sm:grid-cols-2 text-xs">

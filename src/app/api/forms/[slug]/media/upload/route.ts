@@ -67,14 +67,16 @@ export async function POST(request: Request, context: RouteParams) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    let allowedTypes: MediaType[] = ["IMAGE", "VIDEO"];
+    let allowedTypes: MediaType[] = ["IMAGE", "VIDEO", "AUDIO"];
     if (typeHint === "image") allowedTypes = ["IMAGE"];
     if (typeHint === "video") allowedTypes = ["VIDEO"];
+    if (typeHint === "audio") allowedTypes = ["AUDIO"];
 
     const asset = await uploadMediaAsset({
       buffer,
       workspaceId: form.workspaceId,
       allowedTypes,
+      typeHint,
     });
 
     return NextResponse.json(

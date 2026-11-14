@@ -77,6 +77,7 @@ export const formFieldSchema = z.object({
   id: z.string().optional(),
   label: z.string().min(1, "Field label is required").trim(),
   description: z.string().optional().nullable(),
+  helpText: z.string().optional().nullable(),
   placeholder: z.string().optional().nullable(),
   type: z.enum([
     "SHORT_TEXT",
@@ -87,10 +88,27 @@ export const formFieldSchema = z.object({
     "MULTIPLE_CHOICE",
     "CHECKBOX",
     "STAR_RATING",
+    "NUMBER",
+    "PHONE",
+    "DATE",
+    "DROPDOWN",
+    "FILE_UPLOAD",
+    "WEBSITE",
+    "LONG_FORM",
+    "CUSTOMER_ROLE",
+    "COMPANY_SIZE",
+    "PRODUCT_PLAN",
+    "TEXT",
+    "TEXTAREA",
+    "RATING",
+    "SELECT",
+    "BOOLEAN",
   ]),
   isRequired: z.boolean().default(false),
   orderIndex: z.number().int().default(0),
   optionsJson: z.string().optional().nullable(),
+  conditionsJson: z.string().optional().nullable(),
+  validationRulesJson: z.string().optional().nullable(),
 });
 
 export const createFormSchema = z.object({
@@ -144,11 +162,24 @@ export const createFormSchema = z.object({
 
   isPublished: z.boolean().default(true),
   projectId: z.string().optional().nullable(),
+  isMultiStep: z.boolean().optional().default(false),
+  flowConfigJson: z.string().optional().nullable(),
+  customCss: z.string().optional().nullable(),
+  videoInstructions: z.string().optional().nullable(),
+  recordingQuestionsJson: z.string().optional().nullable(),
   fields: z.array(formFieldSchema).optional().default([]),
 });
 
 export const createCollectionFormSchema = createFormSchema;
 export const updateFormSchema = createFormSchema.partial();
+
+export const createFormTemplateSchema = z.object({
+  name: z.string().min(2, "Template name must be at least 2 characters").trim(),
+  description: z.string().optional().nullable(),
+  category: z.string().default("GENERAL"),
+  icon: z.string().optional().default("file-text"),
+  configJson: z.string().min(2, "Template configuration is required"),
+});
 
 export const submitTestimonialSchema = z.object({
   formSlug: z.string().min(1),
