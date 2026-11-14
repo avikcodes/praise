@@ -38,5 +38,7 @@ export type PublicIndividualTestimonial = {
   collectionFormUrl?: string | null;
   isVerified: boolean;
   showPraiseBranding?: boolean;
+  transcript?: string | null;
+  transcriptLanguage?: string | null;
 };
 

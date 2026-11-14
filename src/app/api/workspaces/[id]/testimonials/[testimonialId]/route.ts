@@ -84,7 +84,14 @@ export async function PATCH(request: Request, context: RouteParams) {
           tags: {
             include: { tag: true },
           },
-          mediaAssets: true,
+          mediaAssets: {
+            include: {
+              transcription: true,
+            },
+          },
+          transcriptions: {
+            orderBy: { createdAt: "desc" },
+          },
           consentRecords: {
             take: 1,
             orderBy: { grantedAt: "desc" },
@@ -99,6 +106,10 @@ export async function PATCH(request: Request, context: RouteParams) {
         ? {
             ...updated,
             consentRecord: updated.consentRecords[0] || null,
+            transcription:
+              updated.transcriptions?.[0] ||
+              updated.mediaAssets?.find((m) => m.transcription)?.transcription ||
+              null,
           }
         : null,
     });

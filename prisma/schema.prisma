@@ -88,6 +88,13 @@ enum WidgetEventType {
   VIDEO_PLAY
 }
 
+enum TranscriptionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
 // -----------------------------------------------------------------------------
 // 1. User & Authentication
 // -----------------------------------------------------------------------------
@@ -145,6 +152,7 @@ model Workspace {
   widgetEvents   WidgetEvent[]
   apiKeys        ApiKey[]
   formTemplates  FormTemplate[]
+  mediaTranscriptions MediaTranscription[]
 
   @@index([slug])
   @@map("workspaces")
@@ -381,6 +389,7 @@ model Testimonial {
   mediaAssets    MediaAsset[]
   consentRecords ConsentRecord[]
   tags           TestimonialTag[]
+  transcriptions MediaTranscription[]
 
   @@index([workspaceId])
   @@index([workspaceId, status])
@@ -407,10 +416,46 @@ model MediaAsset {
 
   workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   testimonial     Testimonial?    @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+  transcription   MediaTranscription?
 
   @@index([workspaceId])
   @@index([testimonialId])
   @@map("media_assets")
+}
+
+model MediaTranscription {
+  id              String              @id @default(cuid())
+  workspaceId     String
+  mediaAssetId    String              @unique
+  testimonialId   String?
+  provider        String              @default("whisper")
+  status          TranscriptionStatus @default(PENDING)
+  text            String?
+  rawText         String?
+  language        String?
+  confidence      Float?
+  durationSeconds Int?
+  errorMessage    String?
+  attempts        Int                 @default(0)
+  maxAttempts     Int                 @default(3)
+  isEdited        Boolean             @default(false)
+  editedAt        DateTime?
+  editedByUserId  String?
+  metadataJson    String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mediaAsset      MediaAsset          @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  testimonial     Testimonial?        @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([mediaAssetId])
+  @@index([testimonialId])
+  @@index([status])
+  @@map("media_transcriptions")
 }
 
 model ConsentRecord {

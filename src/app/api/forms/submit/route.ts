@@ -18,6 +18,7 @@ import {
   getTraversedVisibleFieldIds,
   FormFlowConfig,
 } from "@/lib/forms/flow-engine";
+import { triggerMediaTranscription } from "@/lib/transcription/service";
 
 // Basic email regex validator
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -521,6 +522,17 @@ export async function POST(request: Request) {
 
       return testimonial;
     });
+
+    // 8. Background Media Transcription Job (Non-blocking)
+    if (mediaAssetId && (type === "VIDEO" || type === "AUDIO")) {
+      triggerMediaTranscription(
+        savedTestimonial.id,
+        mediaAssetId,
+        form.workspaceId,
+      ).catch((err) => {
+        console.error("Non-blocking transcription dispatch error:", err);
+      });
+    }
 
     return NextResponse.json(
       {

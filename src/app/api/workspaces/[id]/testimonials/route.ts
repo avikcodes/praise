@@ -106,7 +106,14 @@ export async function GET(request: Request, context: RouteParams) {
             take: 1,
             orderBy: { grantedAt: "desc" },
           },
-          mediaAssets: true,
+          mediaAssets: {
+            include: {
+              transcription: true,
+            },
+          },
+          transcriptions: {
+            orderBy: { createdAt: "desc" },
+          },
           tags: {
             include: { tag: true },
           },
@@ -142,6 +149,10 @@ export async function GET(request: Request, context: RouteParams) {
       testimonials: testimonials.map((t) => ({
         ...t,
         consentRecord: t.consentRecords[0] || null,
+        transcription:
+          t.transcriptions?.[0] ||
+          t.mediaAssets?.find((m) => m.transcription)?.transcription ||
+          null,
       })),
       counts: countMap,
       pagination: {

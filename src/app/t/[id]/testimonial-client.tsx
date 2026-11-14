@@ -53,6 +53,7 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [isEmbedOpen, setIsEmbedOpen] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
 
   const videoAsset = media.find((m) => m.type === "VIDEO");
   const imageAssets = media.filter((m) => m.type === "IMAGE");
@@ -259,6 +260,42 @@ export function TestimonialClient({ data }: TestimonialClientProps) {
                 &ldquo;{content}&rdquo;
               </p>
             </blockquote>
+
+            {/* Audio/Video Transcript & Captions */}
+            {data.transcript && (
+              <div
+                className={`rounded-xl border ${borderLine} p-4 text-xs space-y-2 ${
+                  isDark ? "bg-ink-900/60" : "bg-warm-50/70"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={`font-semibold uppercase tracking-wider text-[11px] ${subtleText}`}
+                  >
+                    Audio &amp; Video Transcript{" "}
+                    {data.transcriptLanguage
+                      ? `(${data.transcriptLanguage.toUpperCase()})`
+                      : ""}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowTranscript(!showTranscript)}
+                    className="text-brand-600 hover:underline font-semibold"
+                  >
+                    {showTranscript ? "Hide Transcript" : "Read Transcript"}
+                  </button>
+                </div>
+                {showTranscript && (
+                  <p
+                    className={`leading-relaxed whitespace-pre-line pt-1 text-sm ${
+                      isDark ? "text-ink-200" : "text-ink-800"
+                    }`}
+                  >
+                    {data.transcript}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Attached Photo Gallery */}
             {imageAssets.length > 0 && (

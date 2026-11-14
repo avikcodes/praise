@@ -131,6 +131,11 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
           include: { tag: true },
         },
         mediaAssets: true,
+        transcriptions: {
+          where: { status: "COMPLETED" },
+          take: 1,
+          orderBy: { createdAt: "desc" },
+        },
         consentRecords: {
           take: 1,
         },
@@ -222,6 +227,8 @@ export default async function PublicTestimonialPage({ params }: PageProps) {
         collectionFormUrl,
         isVerified: testimonial.consentRecords.length > 0 && permissionCheck.canPublish,
         showPraiseBranding,
+        transcript: testimonial.transcriptions?.[0]?.text || null,
+        transcriptLanguage: testimonial.transcriptions?.[0]?.language || null,
       };
     }
   } catch (err) {

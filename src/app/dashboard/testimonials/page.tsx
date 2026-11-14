@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertCircle,
   Archive,
   ArrowUpDown,
   Building2,
@@ -11,18 +12,23 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Copy,
   Download,
+  Edit3,
   ExternalLink,
   Eye,
   FileText,
+  Languages,
   LayoutGrid,
   List,
   Loader2,
   Mail,
   MessageSquareQuote,
+  Mic,
   Plus,
   RefreshCw,
   RotateCcw,
+  Save,
   Search,
   ShieldCheck,
   Star,
@@ -115,6 +121,24 @@ export type TestimonialItem = {
     tagId: string;
     tag: TagItem;
   }[];
+  transcription?: {
+    id: string;
+    workspaceId: string;
+    mediaAssetId: string;
+    testimonialId?: string | null;
+    provider: string;
+    status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+    text?: string | null;
+    rawText?: string | null;
+    language?: string | null;
+    confidence?: number | null;
+    durationSeconds?: number | null;
+    errorMessage?: string | null;
+    attempts?: number;
+    isEdited?: boolean;
+    editedAt?: string | null;
+    completedAt?: string | null;
+  } | null;
 };
 
 const PRESET_TAG_COLORS = [
@@ -191,6 +215,20 @@ function TestimonialsContent() {
 
   // Single item action in-progress
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+
+  // Transcription state
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isEditingTranscript, setIsEditingTranscript] = useState(false);
+  const [transcriptEditText, setTranscriptEditText] = useState("");
+  const [transcriptEditLang, setTranscriptEditLang] = useState("");
+  const [isSavingTranscript, setIsSavingTranscript] = useState(false);
+
+  const handleOpenTestimonial = (item: TestimonialItem) => {
+    setSelectedTestimonial(item);
+    setIsEditingTranscript(false);
+    setTranscriptEditText(item.transcription?.text || "");
+    setTranscriptEditLang(item.transcription?.language || "en");
+  };
 
   const toast = useToast();
   const workspaceId = activeWorkspace?.id;
@@ -422,6 +460,101 @@ function TestimonialsContent() {
       }
     } catch {
       toast.error("Network Error", "Unable to delete media asset.");
+    }
+  };
+
+  const handleRetryTranscription = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    setIsTranscribing(true);
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/testimonials/${testimonialId}/transcribe`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to initiate transcription.");
+      }
+      toast.success("Transcription Queued", "Processing in the background.");
+      if (data.transcription) {
+        setSelectedTestimonial((prev) =>
+          prev && prev.id === testimonialId
+            ? { ...prev, transcription: data.transcription }
+            : prev,
+        );
+        setTestimonials((prev) =>
+          prev.map((t) =>
+            t.id === testimonialId ? { ...t, transcription: data.transcription } : t,
+          ),
+        );
+      }
+    } catch (err: unknown) {
+      toast.error(
+        "Transcription Failed",
+        err instanceof Error ? err.message : "Error initiating transcription.",
+      );
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const handleSaveManualTranscript = async (
+    testimonialId: string,
+    syncToQuote = false,
+  ) => {
+    if (!workspaceId || !transcriptEditText.trim()) return;
+    setIsSavingTranscript(true);
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/testimonials/${testimonialId}/transcript`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: transcriptEditText.trim(),
+            language: transcriptEditLang.trim() || undefined,
+            syncToTestimonialContent: syncToQuote,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save transcript.");
+      }
+      toast.success(
+        "Transcript Saved",
+        syncToQuote
+          ? "Transcript and testimonial quote updated."
+          : "Transcript updated successfully.",
+      );
+      setIsEditingTranscript(false);
+      if (data.transcription) {
+        setSelectedTestimonial((prev) => {
+          if (!prev || prev.id !== testimonialId) return prev;
+          return {
+            ...prev,
+            transcription: data.transcription,
+            content: syncToQuote ? transcriptEditText.trim() : prev.content,
+          };
+        });
+        setTestimonials((prev) =>
+          prev.map((t) => {
+            if (t.id !== testimonialId) return t;
+            return {
+              ...t,
+              transcription: data.transcription,
+              content: syncToQuote ? transcriptEditText.trim() : t.content,
+            };
+          }),
+        );
+      }
+    } catch (err: unknown) {
+      toast.error(
+        "Failed to Save",
+        err instanceof Error ? err.message : "Error saving transcript.",
+      );
+    } finally {
+      setIsSavingTranscript(false);
     }
   };
 
@@ -1045,12 +1178,13 @@ function TestimonialsContent() {
                   const isBusy = actionInProgress === item.id;
                   const hasMedia = Boolean(item.mediaAssets && item.mediaAssets.length > 0);
                   const isVideo = Boolean(hasMedia && item.mediaAssets?.some((m) => m.type === "VIDEO"));
+                  const isAudio = Boolean(hasMedia && item.mediaAssets?.some((m) => m.type === "AUDIO"));
                   const isSelected = selectedIds.includes(item.id);
 
                   return (
                     <tr
                       key={item.id}
-                      onClick={() => setSelectedTestimonial(item)}
+                      onClick={() => handleOpenTestimonial(item)}
                       className={`hover:bg-warm-50/70 cursor-pointer transition-colors group ${
                         isSelected ? "bg-brand-50/30" : ""
                       }`}
@@ -1131,13 +1265,37 @@ function TestimonialsContent() {
                         )}
                       </td>
 
-                      {/* Media */}
+                      {/* Media & Transcription */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         {hasMedia ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-700 border border-purple-200">
-                            <Video size={10} />
-                            <span>{isVideo ? "Video" : "Image"}</span>
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-semibold text-purple-700 border border-purple-200">
+                              {isVideo ? <Video size={10} /> : isAudio ? <Mic size={10} /> : <FileText size={10} />}
+                              <span>{isVideo ? "Video" : isAudio ? "Audio" : "Image"}</span>
+                            </span>
+                            {item.transcription && (
+                              <span
+                                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.2 text-[9px] font-medium border ${
+                                  item.transcription.status === "COMPLETED"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : item.transcription.status === "FAILED"
+                                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                                    : "bg-sky-50 text-sky-700 border-sky-200"
+                                }`}
+                              >
+                                {item.transcription.status === "COMPLETED" ? (
+                                  <span>Transcript ({item.transcription.language || "auto"})</span>
+                                ) : item.transcription.status === "FAILED" ? (
+                                  <span>Transcript Failed</span>
+                                ) : (
+                                  <span className="flex items-center gap-0.5">
+                                    <Loader2 size={8} className="animate-spin" />
+                                    <span>Transcribing...</span>
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-ink-300 text-[11px]">—</span>
                         )}
@@ -1280,7 +1438,7 @@ function TestimonialsContent() {
 
                           <button
                             type="button"
-                            onClick={() => setSelectedTestimonial(item)}
+                            onClick={() => handleOpenTestimonial(item)}
                             title="Inspect Testimonial Details"
                             className="rounded-md p-1.5 text-ink-500 hover:bg-warm-100 hover:text-ink-800 transition-colors"
                           >
@@ -1491,6 +1649,51 @@ function TestimonialsContent() {
                   </div>
                 )}
 
+                {/* Transcription Preview in Card */}
+                {item.transcription && (
+                  <div className="rounded-xl border border-line bg-warm-50/50 p-2.5 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1 text-[11px] font-semibold text-ink-700">
+                        <Languages size={12} className="text-brand-600" />
+                        <span>Transcript ({item.transcription.language || "auto"})</span>
+                        {item.transcription.isEdited && (
+                          <span className="text-[9px] text-brand-600 font-normal italic">
+                            (Edited)
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border ${
+                          item.transcription.status === "COMPLETED"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : item.transcription.status === "FAILED"
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            : "bg-sky-50 text-sky-700 border-sky-200"
+                        }`}
+                      >
+                        {item.transcription.status}
+                      </span>
+                    </div>
+                    {item.transcription.status === "COMPLETED" && item.transcription.text && (
+                      <p className="line-clamp-2 text-ink-600 italic text-[11px]">
+                        &ldquo;{item.transcription.text}&rdquo;
+                      </p>
+                    )}
+                    {item.transcription.status === "FAILED" && (
+                      <div className="flex items-center justify-between text-rose-700 text-[10px]">
+                        <span className="truncate">{item.transcription.errorMessage || "Processing failed"}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRetryTranscription(item.id)}
+                          className="font-semibold underline ml-2 shrink-0"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Footer metadata & Moderation Actions */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-line/50 text-[11px] text-ink-500">
                   <div className="flex flex-wrap items-center gap-3">
@@ -1537,7 +1740,7 @@ function TestimonialsContent() {
                   <div className="flex items-center gap-1.5 self-end sm:self-auto">
                     <button
                       type="button"
-                      onClick={() => setSelectedTestimonial(item)}
+                      onClick={() => handleOpenTestimonial(item)}
                       className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-semibold text-ink-700 hover:bg-warm-100 transition-colors shadow-2xs"
                     >
                       <Eye size={12} />
@@ -1963,6 +2166,242 @@ function TestimonialsContent() {
                   </div>
                 </div>
               )}
+
+            {/* Audio & Video Transcription Section */}
+            {(selectedTestimonial.type === "VIDEO" ||
+              selectedTestimonial.type === "AUDIO" ||
+              selectedTestimonial.mediaAssets?.some((m) => m.type === "VIDEO" || m.type === "AUDIO")) && (
+              <div className="space-y-2 rounded-2xl border border-line bg-warm-50/40 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Mic size={15} className="text-brand-600" />
+                    <h5 className="font-semibold text-xs text-ink-900 uppercase tracking-wider">
+                      Media Transcription &amp; Captions
+                    </h5>
+                    {selectedTestimonial.transcription && (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                          selectedTestimonial.transcription.status === "COMPLETED"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : selectedTestimonial.transcription.status === "FAILED"
+                            ? "bg-rose-50 text-rose-700 border-rose-200"
+                            : "bg-sky-50 text-sky-700 border-sky-200"
+                        }`}
+                      >
+                        {selectedTestimonial.transcription.status === "COMPLETED" && <CheckCircle2 size={10} />}
+                        {selectedTestimonial.transcription.status === "FAILED" && <AlertCircle size={10} />}
+                        {(selectedTestimonial.transcription.status === "PENDING" ||
+                          selectedTestimonial.transcription.status === "PROCESSING") && (
+                          <Loader2 size={10} className="animate-spin" />
+                        )}
+                        <span>{selectedTestimonial.transcription.status}</span>
+                      </span>
+                    )}
+                    {selectedTestimonial.transcription?.language && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[10px] font-medium text-ink-600 border border-line">
+                        <Languages size={10} />
+                        <span>{selectedTestimonial.transcription.language.toUpperCase()}</span>
+                      </span>
+                    )}
+                    {selectedTestimonial.transcription?.isEdited && (
+                      <span className="rounded bg-brand-50 text-brand-700 border border-brand-200 px-1.5 py-0.2 text-[10px] font-medium italic">
+                        Edited Manually
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Top action button */}
+                  <div className="flex items-center gap-2">
+                    {(!selectedTestimonial.transcription || selectedTestimonial.transcription.status === "FAILED") && (
+                      <button
+                        type="button"
+                        onClick={() => handleRetryTranscription(selectedTestimonial.id)}
+                        disabled={isTranscribing}
+                        className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-2.5 py-1 text-xs font-semibold text-white shadow-2xs hover:bg-brand-600 disabled:opacity-50 transition-colors"
+                      >
+                        {isTranscribing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        <span>{selectedTestimonial.transcription ? "Retry Transcription" : "Transcribe Media"}</span>
+                      </button>
+                    )}
+                    {selectedTestimonial.transcription?.status === "COMPLETED" && !isEditingTranscript && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTranscriptEditText(selectedTestimonial.transcription?.text || "");
+                          setTranscriptEditLang(selectedTestimonial.transcription?.language || "en");
+                          setIsEditingTranscript(true);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink-700 hover:bg-warm-100 transition-colors shadow-2xs"
+                      >
+                        <Edit3 size={12} />
+                        <span>Edit Transcript</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Body Content based on Transcription status */}
+                {selectedTestimonial.transcription?.status === "FAILED" && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-3 text-xs space-y-2 text-rose-800">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={14} className="text-rose-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold block">Transcription Processing Error:</span>
+                        <p className="text-[11px] text-rose-700 mt-0.5 leading-relaxed">
+                          {selectedTestimonial.transcription.errorMessage || "Transcription service could not process this audio."}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 border-t border-rose-200/60">
+                      <button
+                        type="button"
+                        onClick={() => handleRetryTranscription(selectedTestimonial.id)}
+                        disabled={isTranscribing}
+                        className="inline-flex items-center gap-1 rounded-md bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50 shadow-2xs"
+                      >
+                        {isTranscribing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                        <span>Retry Job</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTranscriptEditText("");
+                          setTranscriptEditLang("en");
+                          setIsEditingTranscript(true);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                      >
+                        <Edit3 size={11} />
+                        <span>Supply Transcript Manually</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(selectedTestimonial.transcription?.status === "PENDING" ||
+                  selectedTestimonial.transcription?.status === "PROCESSING") && (
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3.5 text-xs text-sky-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Loader2 size={16} className="animate-spin text-sky-600 shrink-0" />
+                      <div>
+                        <span className="font-semibold block">Transcription in Progress...</span>
+                        <span className="text-[11px] text-sky-600">
+                          The audio stream is being processed in the background using the configured transcription service.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchTestimonials()}
+                      className="inline-flex items-center gap-1 rounded-md border border-sky-300 bg-white px-2 py-1 text-xs font-medium text-sky-700 hover:bg-sky-50 shadow-2xs"
+                    >
+                      <RefreshCw size={11} />
+                      <span>Refresh</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Edit Form */}
+                {isEditingTranscript && (
+                  <div className="rounded-xl border border-brand-200 bg-white p-3 space-y-2.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-ink-900">Edit / Correct Transcript</span>
+                      <div className="flex items-center gap-1.5">
+                        <label className="text-[10px] text-ink-500 font-medium">Lang:</label>
+                        <input
+                          type="text"
+                          value={transcriptEditLang}
+                          onChange={(e) => setTranscriptEditLang(e.target.value)}
+                          placeholder="en"
+                          maxLength={5}
+                          className="w-14 rounded border border-line px-1.5 py-0.5 text-xs text-ink-800 uppercase"
+                        />
+                      </div>
+                    </div>
+                    <textarea
+                      rows={4}
+                      value={transcriptEditText}
+                      onChange={(e) => setTranscriptEditText(e.target.value)}
+                      placeholder="Type or correct transcription text here..."
+                      className="w-full rounded-lg border border-line p-2 text-xs text-ink-900 leading-relaxed focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingTranscript(false)}
+                        className="rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink-600 hover:bg-warm-100"
+                      >
+                        Cancel
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveManualTranscript(selectedTestimonial.id, true)}
+                          disabled={isSavingTranscript || !transcriptEditText.trim()}
+                          className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-50"
+                          title="Save transcript and update the main testimonial quote with this text"
+                        >
+                          <Save size={11} />
+                          <span>Save &amp; Sync Quote</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveManualTranscript(selectedTestimonial.id, false)}
+                          disabled={isSavingTranscript || !transcriptEditText.trim()}
+                          className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 shadow-2xs"
+                        >
+                          {isSavingTranscript ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                          <span>Save Transcript</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed Transcript View */}
+                {selectedTestimonial.transcription?.status === "COMPLETED" && !isEditingTranscript && (
+                  <div className="space-y-2">
+                    <div className="rounded-xl border border-line bg-white p-3.5 text-xs text-ink-900 leading-relaxed whitespace-pre-line shadow-2xs">
+                      {selectedTestimonial.transcription.text}
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-ink-400">
+                      <div className="flex items-center gap-2">
+                        <span>Provider: {selectedTestimonial.transcription.provider}</span>
+                        {selectedTestimonial.transcription.completedAt && (
+                          <span>
+                            • Transcribed {new Date(selectedTestimonial.transcription.completedAt).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedTestimonial.transcription?.text) {
+                              navigator.clipboard.writeText(selectedTestimonial.transcription.text);
+                              toast.success("Copied", "Transcript copied to clipboard.");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 hover:text-ink-700 text-ink-500 font-medium"
+                        >
+                          <Copy size={10} />
+                          <span>Copy Transcript</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRetryTranscription(selectedTestimonial.id)}
+                          disabled={isTranscribing}
+                          className="inline-flex items-center gap-1 hover:text-brand-600 text-ink-500 font-medium ml-2"
+                        >
+                          <RefreshCw size={10} />
+                          <span>Re-transcribe</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Guided Recording Prompts Connected to Testimonial */}
             {selectedTestimonial.recordingQuestionsJson && (
