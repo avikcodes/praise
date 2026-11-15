@@ -95,6 +95,27 @@ enum TranscriptionStatus {
   FAILED
 }
 
+enum VideoExportStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum VideoAspectRatio {
+  ORIGINAL
+  RATIO_16_9
+  RATIO_9_16
+  RATIO_1_1
+  RATIO_4_5
+}
+
+enum VideoResolutionProfile {
+  RES_720P
+  RES_1080P
+  RES_4K
+}
+
 // -----------------------------------------------------------------------------
 // 1. User & Authentication
 // -----------------------------------------------------------------------------
@@ -153,6 +174,20 @@ model Workspace {
   apiKeys        ApiKey[]
   formTemplates  FormTemplate[]
   mediaTranscriptions MediaTranscription[]
+  videoExportJobs VideoExportJob[]
+  testimonialNotes TestimonialNote[]
+  moderationActivities ModerationActivity[]
+  customerStages CustomerStage[]
+  customerAttributeDefinitions CustomerAttributeDefinition[]
+  customerSegments CustomerSegment[]
+  customerNotes CustomerNote[]
+  customerActivities CustomerActivity[]
+  customerTags CustomerTag[]
+  emailCampaigns EmailCampaign[]
+  invitationRecipients InvitationRecipient[]
+  invitationTemplates InvitationTemplate[]
+  emailSuppressions EmailSuppression[]
+  emailCampaignActivities EmailCampaignActivity[]
 
   @@index([slug])
   @@map("workspaces")
@@ -227,22 +262,30 @@ model Project {
 // -----------------------------------------------------------------------------
 
 model Customer {
-  id           String        @id @default(cuid())
-  workspaceId  String
-  name         String
-  email        String
-  company      String?
-  title        String?
-  avatarUrl    String?
-  socialHandle String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id                   String              @id @default(cuid())
+  workspaceId          String
+  name                 String
+  email                String
+  company              String?
+  title                String?
+  avatarUrl            String?
+  socialHandle         String?
+  website              String?
+  stage                String              @default("NEW")
+  customAttributesJson String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
-  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  testimonials Testimonial[]
+  workspace            Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonials         Testimonial[]
+  customerTags         CustomerTag[]
+  notes                CustomerNote[]
+  activities           CustomerActivity[]
+  invitations          InvitationRecipient[]
 
   @@unique([workspaceId, email])
   @@index([workspaceId])
+  @@index([workspaceId, stage])
   @@map("customers")
 }
 
@@ -314,6 +357,7 @@ model CollectionForm {
   project                 Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   fields                  FormField[]
   testimonials            Testimonial[]
+  campaigns               EmailCampaign[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -379,6 +423,18 @@ model Testimonial {
   status         TestimonialStatus @default(PENDING)
   isFeatured     Boolean           @default(false)
   recordingQuestionsJson String?
+  // Moderation & Source Details
+  sourceType             String            @default("FORM")
+  sourceUrl              String?
+  importBatchId          String?
+  importSourceDetailsJson String?
+  mediaHash              String?
+  isFlaggedDuplicate     Boolean           @default(false)
+  duplicateOfId          String?
+  duplicateConfirmedAt   DateTime?
+  duplicateConfirmedBy   String?
+  duplicateDismissedAt   DateTime?
+  duplicateDismissedBy   String?
   submittedAt    DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -390,10 +446,16 @@ model Testimonial {
   consentRecords ConsentRecord[]
   tags           TestimonialTag[]
   transcriptions MediaTranscription[]
+  videoExportJobs VideoExportJob[]
+  notes          TestimonialNote[]
+  moderationActivities ModerationActivity[]
+  invitationRecipient InvitationRecipient?
 
   @@index([workspaceId])
   @@index([workspaceId, status])
   @@index([workspaceId, type])
+  @@index([workspaceId, sourceType])
+  @@index([workspaceId, isFlaggedDuplicate])
   @@index([projectId])
   @@index([formId])
   @@index([customerId])
@@ -412,11 +474,14 @@ model MediaAsset {
   mimeType        String
   fileSizeBytes   Int?
   durationSeconds Int?
+  fileHash        String?
   createdAt       DateTime        @default(now())
 
   workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   testimonial     Testimonial?    @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
   transcription   MediaTranscription?
+  sourceVideoExports VideoExportJob[] @relation("SourceMediaAsset")
+  generatedVideoExport VideoExportJob? @relation("ExportedMediaAsset")
 
   @@index([workspaceId])
   @@index([testimonialId])
@@ -458,6 +523,47 @@ model MediaTranscription {
   @@map("media_transcriptions")
 }
 
+model VideoExportJob {
+  id                   String                 @id @default(cuid())
+  workspaceId          String
+  testimonialId        String
+  sourceMediaAssetId   String
+  exportedMediaAssetId String?                @unique
+  status               VideoExportStatus      @default(QUEUED)
+  progress             Int                    @default(0)
+  aspectRatio          VideoAspectRatio       @default(ORIGINAL)
+  resolutionProfile    VideoResolutionProfile @default(RES_1080P)
+  burnSubtitles        Boolean                @default(true)
+  subtitleFont         String                 @default("sans-serif")
+  subtitleSize         String                 @default("medium")
+  subtitlePosition     String                 @default("bottom")
+  subtitleColor        String                 @default("#ffffff")
+  subtitleBgColor      String                 @default("rgba(0,0,0,0.6)")
+  customSegmentsJson   String?
+  outputUrl            String?
+  fileSizeBytes        Int?
+  durationSeconds      Int?
+  sourceResolution     String?
+  errorMessage         String?
+  attempts             Int                    @default(0)
+  maxAttempts          Int                    @default(3)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  workspace            Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonial          Testimonial            @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+  sourceMediaAsset     MediaAsset             @relation("SourceMediaAsset", fields: [sourceMediaAssetId], references: [id], onDelete: Cascade)
+  exportedMediaAsset   MediaAsset?            @relation("ExportedMediaAsset", fields: [exportedMediaAssetId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([testimonialId])
+  @@index([sourceMediaAssetId])
+  @@index([status])
+  @@map("video_export_jobs")
+}
+
 model ConsentRecord {
   id               String      @id @default(cuid())
   workspaceId      String
@@ -480,6 +586,54 @@ model ConsentRecord {
 }
 
 // -----------------------------------------------------------------------------
+// 6b. Advanced Moderation: Team Notes & Activity History
+// -----------------------------------------------------------------------------
+
+model TestimonialNote {
+  id            String      @id @default(cuid())
+  workspaceId   String
+  testimonialId String
+  authorId      String?
+  authorName    String?
+  authorEmail   String?
+  content       String
+  isPrivate     Boolean     @default(true) // Always private to authorized workspace members
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  workspace     Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonial   Testimonial @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([testimonialId])
+  @@map("testimonial_notes")
+}
+
+model ModerationActivity {
+  id             String      @id @default(cuid())
+  workspaceId    String
+  testimonialId  String
+  actorId        String?     // User ID or null for system/public submitter
+  actorName      String?     // User name or "Public Submitter" / "System"
+  actorEmail     String?
+  action         String      // SUBMITTED, APPROVED, REJECTED, ARCHIVED, RESTORED, BULK_APPROVED, BULK_REJECTED, BULK_ARCHIVED, BULK_TAGGED, TAGS_UPDATED, NOTE_ADDED, DUPLICATE_FLAGGED, DUPLICATE_DISMISSED, DUPLICATE_MERGED
+  previousStatus String?
+  newStatus      String?
+  details        String?
+  metadataJson   String?
+  createdAt      DateTime    @default(now())
+
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonial    Testimonial @relation(fields: [testimonialId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([testimonialId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("moderation_activities")
+}
+
+// -----------------------------------------------------------------------------
 // 7. Tags & Categorization
 // -----------------------------------------------------------------------------
 
@@ -493,6 +647,7 @@ model Tag {
 
   workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   testimonials TestimonialTag[]
+  customerTags CustomerTag[]
 
   @@unique([workspaceId, name])
   @@index([workspaceId])
@@ -584,5 +739,329 @@ model ApiKey {
   @@index([keyHash])
   @@map("api_keys")
 }
+
+// -----------------------------------------------------------------------------
+// 10. Lightweight Customer CRM: Stages, Attributes, Segments, Notes, Activity
+// -----------------------------------------------------------------------------
+
+model CustomerStage {
+  id          String    @id @default(cuid())
+  workspaceId String
+  key         String    // NEW, ACTIVE, PROMOTER, CHAMPION, AT_RISK, INACTIVE, or custom
+  name        String    // Display Name e.g. "Promoter", "Champion"
+  description String?
+  color       String?   @default("#10B981")
+  order       Int       @default(0)
+  isDefault   Boolean   @default(false)
+  isSystem    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId, order])
+  @@map("customer_stages")
+}
+
+model CustomerAttributeDefinition {
+  id          String    @id @default(cuid())
+  workspaceId String
+  key         String    // Unique identifier e.g. "plan", "nps", "industry"
+  name        String    // Display label
+  type        String    @default("TEXT") // TEXT, NUMBER, BOOLEAN, DATE, SELECT
+  optionsJson String?   // For SELECT: JSON array of string options
+  description String?
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId, order])
+  @@map("customer_attribute_definitions")
+}
+
+model CustomerSegment {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  name            String
+  description     String?
+  color           String?   @default("#7049D8")
+  icon            String?   @default("Users")
+  isDynamic       Boolean   @default(true)
+  filterRulesJson String    // JSON definition of dynamic segment matching rules
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("customer_segments")
+}
+
+model CustomerNote {
+  id          String    @id @default(cuid())
+  workspaceId String
+  customerId  String
+  authorId    String?
+  authorName  String?
+  authorEmail String?
+  content     String
+  isPinned    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([customerId, createdAt])
+  @@map("customer_notes")
+}
+
+model CustomerActivity {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  customerId   String
+  actorId      String?
+  actorName    String?
+  action       String    // STAGE_CHANGED, NOTE_ADDED, TESTIMONIAL_SUBMITTED, TAG_ADDED, TAG_REMOVED, ATTRIBUTE_UPDATED, CREATED, IMPORTED, BULK_UPDATED
+  details      String?
+  metadataJson String?
+  createdAt    DateTime  @default(now())
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([customerId, createdAt])
+  @@index([action])
+  @@map("customer_activities")
+}
+
+model CustomerTag {
+  customerId  String
+  tagId       String
+  workspaceId String
+  createdAt   DateTime @default(now())
+
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, tagId])
+  @@index([workspaceId])
+  @@index([tagId])
+  @@map("customer_tags")
+}
+
+// -----------------------------------------------------------------------------
+// 11. Email Testimonial Invitations: Campaigns, Recipient Links, Templates
+// -----------------------------------------------------------------------------
+
+model EmailCampaign {
+  id                 String                  @id @default(cuid())
+  workspaceId        String
+  name               String
+  status             String                  @default("DRAFT") // DRAFT, SCHEDULED, SENDING, COMPLETED, PAUSED, CANCELLED
+  formId             String
+  templateId         String?
+  subject            String
+  bodyText           String
+  bodyHtml           String?
+  replyToEmail       String?
+  fromName           String?
+  senderEmail        String?
+  timezone           String                  @default("UTC")
+  isSequence         Boolean                 @default(false)
+  currentStepNumber  Int                     @default(1)
+  totalSteps         Int                     @default(1)
+  nextRunAt          DateTime?
+  recurringInterval  String                  @default("NONE") // NONE, WEEKLY, MONTHLY, QUARTERLY
+  recurringNextAt    DateTime?
+  totalRecipients    Int                     @default(0)
+  sentCount          Int                     @default(0)
+  deliveredCount     Int                     @default(0)
+  openedCount        Int                     @default(0)
+  clickedCount       Int                     @default(0)
+  submittedCount     Int                     @default(0)
+  bouncedCount       Int                     @default(0)
+  failedCount        Int                     @default(0)
+  unsubscribedCount  Int                     @default(0)
+  confirmedAt        DateTime?
+  confirmedBy        String?
+  scheduledAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  workspace          Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  form               CollectionForm          @relation(fields: [formId], references: [id], onDelete: Cascade)
+  template           InvitationTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  recipients         InvitationRecipient[]
+  steps              EmailCampaignStep[]
+  activities         EmailCampaignActivity[]
+  recipientLogs      CampaignRecipientLog[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([formId])
+  @@index([status, scheduledAt])
+  @@index([status, nextRunAt])
+  @@map("email_campaigns")
+}
+
+model InvitationRecipient {
+  id                 String                 @id @default(cuid())
+  campaignId         String
+  workspaceId        String
+  customerId         String?
+  email              String
+  name               String
+  company            String?
+  title              String?
+  token              String                 @unique // Unique secure token for personal submission & unsubscribe
+  customFieldsJson   String?
+  status             String                 @default("PENDING") // PENDING, SENT, DELIVERED, OPENED, CLICKED, SUBMITTED, BOUNCED, FAILED, UNSUBSCRIBED
+  currentStepNumber  Int                    @default(1)
+  lastStepSentAt     DateTime?
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  openedAt           DateTime?
+  clickedAt          DateTime?
+  submittedAt        DateTime?
+  testimonialId      String?                @unique
+  errorMessage       String?
+  bounceReason       String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  campaign           EmailCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer           Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  testimonial        Testimonial?           @relation(fields: [testimonialId], references: [id], onDelete: SetNull)
+  recipientLogs      CampaignRecipientLog[]
+
+  @@index([campaignId])
+  @@index([workspaceId])
+  @@index([customerId])
+  @@index([status])
+  @@map("invitation_recipients")
+}
+
+model EmailCampaignStep {
+  id                 String                 @id @default(cuid())
+  campaignId         String
+  stepNumber         Int                    // 1 = initial invitation, 2 = 1st follow-up, 3 = 2nd follow-up
+  delayDays          Int                    @default(0) // Days to wait after previous step (0 for initial step)
+  delayHours         Int                    @default(0) // Additional hours
+  subject            String
+  bodyText           String
+  bodyHtml           String?
+  templateId         String?
+  status             String                 @default("PENDING") // PENDING, SCHEDULED, SENDING, COMPLETED, SKIPPED
+  scheduledAt        DateTime?
+  sentAt             DateTime?
+  sentCount          Int                    @default(0)
+  deliveredCount     Int                    @default(0)
+  openedCount        Int                    @default(0)
+  clickedCount       Int                    @default(0)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  campaign           EmailCampaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  template           InvitationTemplate?    @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  recipientLogs      CampaignRecipientLog[]
+
+  @@unique([campaignId, stepNumber])
+  @@index([campaignId])
+  @@map("email_campaign_steps")
+}
+
+model CampaignRecipientLog {
+  id                 String              @id @default(cuid())
+  campaignId         String
+  stepId             String
+  stepNumber         Int
+  recipientId        String
+  idempotencyKey     String              @unique // `${recipientId}_step_${stepNumber}`
+  email              String
+  status             String              @default("SENT") // SENT, DELIVERED, BOUNCED, FAILED, SKIPPED_SUBMITTED, SKIPPED_UNSUBSCRIBED
+  sentAt             DateTime            @default(now())
+  deliveredAt        DateTime?
+  openedAt           DateTime?
+  clickedAt          DateTime?
+  errorMessage       String?
+
+  campaign           EmailCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  step               EmailCampaignStep   @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  recipient          InvitationRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipientId, stepNumber])
+  @@index([campaignId])
+  @@index([stepId])
+  @@index([recipientId])
+  @@map("campaign_recipient_logs")
+}
+
+model EmailCampaignActivity {
+  id                 String          @id @default(cuid())
+  campaignId         String
+  workspaceId        String
+  action             String          // CREATED, SCHEDULED, STEP_DISPATCHED, PAUSED, RESUMED, CANCELLED, STEP_UPDATED, RECURRING_CYCLE
+  actorId            String?
+  actorName          String?
+  stepNumber         Int?
+  details            String
+  metadataJson       String?
+  createdAt          DateTime        @default(now())
+
+  campaign           EmailCampaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  workspace          Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([workspaceId])
+  @@map("email_campaign_activities")
+}
+
+model InvitationTemplate {
+  id          String              @id @default(cuid())
+  workspaceId String
+  name        String
+  category    String              @default("GENERAL") // GENERAL, PRODUCT, EXECUTIVE, POST_PURCHASE, NPS
+  subject     String
+  bodyText    String
+  isSystem    Boolean             @default(false)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaigns   EmailCampaign[]
+  steps       EmailCampaignStep[]
+
+  @@index([workspaceId])
+  @@map("invitation_templates")
+}
+
+model EmailSuppression {
+  id          String    @id @default(cuid())
+  workspaceId String
+  email       String
+  reason      String    @default("UNSUBSCRIBE") // UNSUBSCRIBE, BOUNCE, COMPLAINT, MANUAL
+  details     String?
+  createdAt   DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId])
+  @@map("email_suppressions")
+}
+
+
 
 

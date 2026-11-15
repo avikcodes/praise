@@ -10,6 +10,7 @@ import {
   parseCustomerMeta,
   INTERNAL_EMAIL_SUFFIX,
 } from "@/lib/customers/utils";
+import { logCustomerActivity } from "@/lib/customers/crm";
 import {
   serializeConsentPayload,
   StructuredConsentPayload,
@@ -19,6 +20,7 @@ import {
   FormFlowConfig,
 } from "@/lib/forms/flow-engine";
 import { triggerMediaTranscription } from "@/lib/transcription/service";
+import { logModerationActivity } from "@/lib/moderation/activity";
 
 // Basic email regex validator
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -65,6 +67,7 @@ export async function POST(request: Request) {
       customResponses = {},
       mediaAssetId,
       recordingQuestionsJson,
+      inviteToken,
       // Anti-abuse tokens
       honeypot,
       formLoadedAt,
@@ -469,6 +472,8 @@ export async function POST(request: Request) {
           type: type === "VIDEO" ? "VIDEO" : type === "AUDIO" ? "AUDIO" : "TEXT",
           status: "PENDING",
           isFeatured: false,
+          sourceType: "FORM",
+          sourceUrl: typeof body.sourceUrl === "string" ? body.sourceUrl.trim() : null,
           recordingQuestionsJson:
             recordingQuestionsJson || form.recordingQuestionsJson || null,
         },
@@ -520,10 +525,69 @@ export async function POST(request: Request) {
         });
       }
 
+      // 7d. Link invitation recipient if inviteToken is present
+      if (inviteToken && typeof inviteToken === "string") {
+        const recipient = await tx.invitationRecipient.findUnique({
+          where: { token: inviteToken.trim() },
+        });
+
+        if (recipient && recipient.workspaceId === form.workspaceId) {
+          await tx.invitationRecipient.update({
+            where: { id: recipient.id },
+            data: {
+              status: "SUBMITTED",
+              submittedAt: new Date(),
+              testimonialId: testimonial.id,
+            },
+          });
+
+          await tx.emailCampaign.update({
+            where: { id: recipient.campaignId },
+            data: {
+              submittedCount: { increment: 1 },
+            },
+          });
+        }
+      }
+
       return testimonial;
     });
 
-    // 8. Background Media Transcription Job (Non-blocking)
+    // 8. Log Initial Submission Moderation Activity (Non-blocking)
+    logModerationActivity({
+      workspaceId: form.workspaceId,
+      testimonialId: savedTestimonial.id,
+      actorName: customerName?.trim() || "Public Respondent",
+      actorEmail: hasProvidedEmail ? cleanEmail : null,
+      action: "SUBMITTED",
+      newStatus: "PENDING",
+      details: `Submitted via collection form "${form.title}".`,
+      metadata: {
+        formId: form.id,
+        formSlug: form.slug,
+        type,
+        rating: numericRating,
+      },
+    }).catch(() => {});
+
+    // 8b. Log Customer CRM activity if respondent has customer record
+    if (savedTestimonial.customerId) {
+      logCustomerActivity({
+        workspaceId: form.workspaceId,
+        customerId: savedTestimonial.customerId,
+        action: "TESTIMONIAL_SUBMITTED" as any,
+        actorName: customerName?.trim() || "Respondent",
+        details: inviteToken
+          ? `Submitted testimonial in response to email invitation for form "${form.title}"`
+          : `Submitted testimonial via form "${form.title}"`,
+        metadata: {
+          testimonialId: savedTestimonial.id,
+          inviteToken: inviteToken || null,
+        },
+      }).catch(() => {});
+    }
+
+    // 9. Background Media Transcription Job (Non-blocking)
     if (mediaAssetId && (type === "VIDEO" || type === "AUDIO")) {
       triggerMediaTranscription(
         savedTestimonial.id,

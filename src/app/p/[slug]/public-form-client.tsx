@@ -118,6 +118,28 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
   const [customerCompany, setCustomerCompany] = useState("");
   const [customerTitle, setCustomerTitle] = useState("");
   const [customerWebsite, setCustomerWebsite] = useState("");
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+
+  // Auto-resolve personal invitation if ?invite=[token] is present
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("invite");
+    if (!token) return;
+
+    setInviteToken(token);
+    fetch(`/api/invitations/resolve?token=${encodeURIComponent(token)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.recipient) {
+          if (data.recipient.name) setCustomerName(data.recipient.name);
+          if (data.recipient.email) setCustomerEmail(data.recipient.email);
+          if (data.recipient.company) setCustomerCompany(data.recipient.company);
+          if (data.recipient.title) setCustomerTitle(data.recipient.title);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [isConsentGranted, setIsConsentGranted] = useState(false);
   const [isMediaConsentGranted, setIsMediaConsentGranted] = useState(true);
   const [allowSocialMedia, setAllowSocialMedia] = useState(false);
@@ -541,6 +563,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
           customResponses,
           mediaAssetId,
           recordingQuestionsJson: form.recordingQuestionsJson || null,
+          inviteToken,
           // Anti-abuse parameters
           honeypot,
           formLoadedAt,

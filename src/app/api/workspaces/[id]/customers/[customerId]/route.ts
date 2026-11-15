@@ -8,6 +8,7 @@ import {
   isInternalEmail,
   parseCustomerMeta,
 } from "@/lib/customers/utils";
+import { logCustomerActivity } from "@/lib/customers/crm";
 import { getStorageEngine } from "@/lib/storage/engine";
 import { recordTombstone } from "@/lib/privacy/consent";
 
@@ -28,6 +29,20 @@ export async function GET(request: Request, context: RouteParams) {
         workspaceId,
       },
       include: {
+        customerTags: {
+          include: {
+            tag: {
+              select: { id: true, name: true, color: true },
+            },
+          },
+        },
+        notes: {
+          orderBy: { createdAt: "desc" },
+        },
+        activities: {
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        },
         testimonials: {
           orderBy: { submittedAt: "desc" },
           include: {
@@ -35,7 +50,15 @@ export async function GET(request: Request, context: RouteParams) {
               select: { id: true, title: true, slug: true },
             },
             project: {
-              select: { id: true, name: true, slug: true, color: true },
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                brand: {
+                  select: { id: true, name: true, logoUrl: true },
+                },
+              },
             },
             mediaAssets: {
               select: {
@@ -72,11 +95,50 @@ export async function GET(request: Request, context: RouteParams) {
     const meta = parseCustomerMeta(customer.socialHandle);
     const cleanDisplayEmail = displayCustomerEmail(customer.email);
 
-    // Collect distinct associated projects
-    const projectMap = new Map<string, { id: string; name: string; slug: string; color?: string | null }>();
+    // Collect distinct associated projects and brands
+    const projectMap = new Map<
+      string,
+      { id: string; name: string; slug: string; color?: string | null; brandName?: string | null }
+    >();
+    const brandMap = new Map<string, { id: string; name: string; logoUrl?: string | null }>();
+
+    let totalRatingSum = 0;
+    let ratedCount = 0;
+    let approvedCount = 0;
+    let pendingCount = 0;
+    let rejectedCount = 0;
+    let archivedCount = 0;
+
     for (const t of customer.testimonials) {
+      if (t.rating) {
+        totalRatingSum += t.rating;
+        ratedCount++;
+      }
+      if (t.status === "APPROVED") approvedCount++;
+      else if (t.status === "PENDING") pendingCount++;
+      else if (t.status === "REJECTED") rejectedCount++;
+      else if (t.status === "ARCHIVED") archivedCount++;
+
       if (t.project) {
-        projectMap.set(t.project.id, t.project);
+        projectMap.set(t.project.id, {
+          id: t.project.id,
+          name: t.project.name,
+          slug: t.project.slug,
+          color: t.project.color,
+          brandName: t.project.brand?.name || null,
+        });
+        if (t.project.brand) {
+          brandMap.set(t.project.brand.id, t.project.brand);
+        }
+      }
+    }
+
+    let customAttributes: Record<string, unknown> = {};
+    if (customer.customAttributesJson) {
+      try {
+        customAttributes = JSON.parse(customer.customAttributesJson);
+      } catch {
+        // ignore
       }
     }
 
@@ -86,21 +148,60 @@ export async function GET(request: Request, context: RouteParams) {
         workspaceId: customer.workspaceId,
         name: customer.name,
         email: cleanDisplayEmail,
+        rawEmail: customer.email,
         hasEmail: Boolean(cleanDisplayEmail),
         company: customer.company,
         title: customer.title,
         avatarUrl: customer.avatarUrl,
-        website: meta.website,
-        notes: meta.notes,
-        createdAt: customer.createdAt.toISOString(),
-        updatedAt: customer.updatedAt.toISOString(),
-        testimonialCount: customer.testimonials.length,
+        website: customer.website || meta.website,
+        stage: customer.stage || "NEW",
+        customAttributes,
+        tags: customer.customerTags.map((ct) => ({
+          id: ct.tag.id,
+          name: ct.tag.name,
+          color: ct.tag.color,
+        })),
+        tagIds: customer.customerTags.map((ct) => ct.tag.id),
+        notes: customer.notes.map((n) => ({
+          id: n.id,
+          content: n.content,
+          authorName: n.authorName,
+          authorEmail: n.authorEmail,
+          isPinned: n.isPinned,
+          createdAt: n.createdAt.toISOString(),
+        })),
+        activities: customer.activities.map((a) => ({
+          id: a.id,
+          action: a.action,
+          actorName: a.actorName,
+          details: a.details,
+          metadata: a.metadataJson ? JSON.parse(a.metadataJson) : null,
+          createdAt: a.createdAt.toISOString(),
+        })),
+        stats: {
+          totalSubmissions: customer.testimonials.length,
+          approvedCount,
+          pendingCount,
+          rejectedCount,
+          archivedCount,
+          averageRating: ratedCount > 0 ? parseFloat((totalRatingSum / ratedCount).toFixed(1)) : null,
+        },
         associatedProjects: Array.from(projectMap.values()),
+        associatedBrands: Array.from(brandMap.values()),
         testimonials: customer.testimonials.map((t) => ({
-          ...t,
+          id: t.id,
+          content: t.content,
+          rating: t.rating,
+          status: t.status,
+          type: t.type,
           submittedAt: t.submittedAt.toISOString(),
+          form: t.form,
+          project: t.project,
+          mediaAssets: t.mediaAssets,
           consentRecord: t.consentRecords[0] || null,
         })),
+        createdAt: customer.createdAt.toISOString(),
+        updatedAt: customer.updatedAt.toISOString(),
       },
     });
   } catch (error) {
@@ -115,15 +216,29 @@ export async function GET(request: Request, context: RouteParams) {
 export async function PATCH(request: Request, context: RouteParams) {
   try {
     const { id: workspaceId, customerId } = await context.params;
-    await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
+    const member = await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
 
     const body = await request.json();
-    const { name, email, company, title, website, avatarUrl, notes } = body;
+    const {
+      name,
+      email,
+      company,
+      title,
+      website,
+      avatarUrl,
+      stage,
+      customAttributes,
+      tagIds,
+      notes,
+    } = body;
 
     const existing = await prisma.customer.findUnique({
       where: {
         id: customerId,
         workspaceId,
+      },
+      include: {
+        customerTags: true,
       },
     });
 
@@ -139,9 +254,14 @@ export async function PATCH(request: Request, context: RouteParams) {
       email?: string;
       company?: string | null;
       title?: string | null;
+      website?: string | null;
       avatarUrl?: string | null;
       socialHandle?: string | null;
+      stage?: string;
+      customAttributesJson?: string | null;
     } = {};
+
+    const changesLogged: string[] = [];
 
     if (typeof name === "string") {
       const trimmed = name.trim();
@@ -151,7 +271,10 @@ export async function PATCH(request: Request, context: RouteParams) {
           { status: 400 },
         );
       }
-      updateData.name = trimmed;
+      if (trimmed !== existing.name) {
+        updateData.name = trimmed;
+        changesLogged.push(`name to "${trimmed}"`);
+      }
     }
 
     if (email !== undefined) {
@@ -163,7 +286,6 @@ export async function PATCH(request: Request, context: RouteParams) {
             { status: 400 },
           );
         }
-        // If email changed, check uniqueness
         if (trimmedEmail !== existing.email.toLowerCase()) {
           const conflict = await prisma.customer.findUnique({
             where: {
@@ -179,34 +301,93 @@ export async function PATCH(request: Request, context: RouteParams) {
               { status: 409 },
             );
           }
+          updateData.email = trimmedEmail;
+          changesLogged.push(`email to "${trimmedEmail}"`);
         }
-        updateData.email = trimmedEmail;
       } else {
-        // Clearing email - use internal placeholder if not already internal
         if (!isInternalEmail(existing.email)) {
           updateData.email = `no-email-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${INTERNAL_EMAIL_SUFFIX}`;
+          changesLogged.push("removed email");
         }
       }
     }
 
     if (company !== undefined) {
-      updateData.company = typeof company === "string" && company.trim() ? company.trim() : null;
+      const newCompany = typeof company === "string" && company.trim() ? company.trim() : null;
+      if (newCompany !== existing.company) {
+        updateData.company = newCompany;
+        changesLogged.push(`company to "${newCompany || "none"}"`);
+      }
     }
 
     if (title !== undefined) {
-      updateData.title = typeof title === "string" && title.trim() ? title.trim() : null;
+      const newTitle = typeof title === "string" && title.trim() ? title.trim() : null;
+      if (newTitle !== existing.title) {
+        updateData.title = newTitle;
+        changesLogged.push(`title to "${newTitle || "none"}"`);
+      }
+    }
+
+    if (website !== undefined) {
+      const newWeb = typeof website === "string" && website.trim() ? website.trim() : null;
+      if (newWeb !== existing.website) {
+        updateData.website = newWeb;
+        changesLogged.push(`website to "${newWeb || "none"}"`);
+      }
     }
 
     if (avatarUrl !== undefined) {
       updateData.avatarUrl = typeof avatarUrl === "string" && avatarUrl.trim() ? avatarUrl.trim() : null;
     }
 
-    // Update website and notes
-    if (website !== undefined || notes !== undefined) {
+    if (stage !== undefined) {
+      const newStage = String(stage).trim().toUpperCase();
+      if (newStage && newStage !== existing.stage) {
+        updateData.stage = newStage;
+        await logCustomerActivity({
+          workspaceId,
+          customerId,
+          action: "STAGE_CHANGED",
+          actorId: member.user.id,
+          actorName: member.user.name,
+          details: `Lifecycle stage transitioned from ${existing.stage} to ${newStage}`,
+          metadata: { previousStage: existing.stage, newStage },
+        });
+      }
+    }
+
+    if (customAttributes !== undefined) {
+      let merged = {};
+      if (existing.customAttributesJson) {
+        try {
+          merged = JSON.parse(existing.customAttributesJson);
+        } catch {}
+      }
+      merged = { ...merged, ...customAttributes };
+      updateData.customAttributesJson = JSON.stringify(merged);
+      changesLogged.push("updated custom attributes");
+    }
+
+    if (notes !== undefined) {
       const currentMeta = parseCustomerMeta(existing.socialHandle);
-      const newWeb = website !== undefined ? website : currentMeta.website;
-      const newNotes = notes !== undefined ? notes : currentMeta.notes;
-      updateData.socialHandle = formatCustomerMeta(newWeb, newNotes);
+      updateData.socialHandle = formatCustomerMeta(existing.website, notes);
+    }
+
+    // Update tags
+    if (tagIds !== undefined && Array.isArray(tagIds)) {
+      await prisma.customerTag.deleteMany({
+        where: { customerId, workspaceId },
+      });
+      for (const tid of tagIds) {
+        await prisma.customerTag.create({
+          data: {
+            customerId,
+            tagId: tid,
+            workspaceId,
+          },
+        }).catch(() => {});
+      }
+      changesLogged.push(`updated tags count to ${tagIds.length}`);
     }
 
     const updated = await prisma.customer.update({
@@ -217,7 +398,16 @@ export async function PATCH(request: Request, context: RouteParams) {
       data: updateData,
     });
 
-    const meta = parseCustomerMeta(updated.socialHandle);
+    if (changesLogged.length > 0) {
+      await logCustomerActivity({
+        workspaceId,
+        customerId,
+        action: "PROFILE_UPDATED",
+        actorId: member.user.id,
+        actorName: member.user.name,
+        details: `Updated: ${changesLogged.join(", ")}`,
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -229,8 +419,8 @@ export async function PATCH(request: Request, context: RouteParams) {
         company: updated.company,
         title: updated.title,
         avatarUrl: updated.avatarUrl,
-        website: meta.website,
-        notes: meta.notes,
+        website: updated.website,
+        stage: updated.stage,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       },
@@ -275,7 +465,6 @@ export async function DELETE(request: Request, context: RouteParams) {
       const testimonialIds = customer.testimonials.map((t) => t.id);
       const engine = getStorageEngine();
 
-      // 1. Purge all media files safely from disk
       const mediaAssets = await prisma.mediaAsset.findMany({
         where: {
           testimonialId: { in: testimonialIds },
@@ -296,7 +485,6 @@ export async function DELETE(request: Request, context: RouteParams) {
         });
       }
 
-      // 2. Register tombstones for testimonials
       for (const tid of testimonialIds) {
         recordTombstone({
           type: "TESTIMONIAL",
@@ -306,36 +494,25 @@ export async function DELETE(request: Request, context: RouteParams) {
         });
       }
 
-      // 3. Delete testimonials
       await prisma.testimonial.deleteMany({
-        where: {
-          id: { in: testimonialIds },
-          workspaceId,
-        },
+        where: { id: { in: testimonialIds } },
       });
     }
 
-    // Register tombstone for customer
     recordTombstone({
       type: "CUSTOMER",
-      originalId: customerId,
+      originalId: customer.id,
       workspaceId,
       reason: "CUSTOMER_REQUEST",
     });
 
-    // Delete customer profile
     await prisma.customer.delete({
-      where: {
-        id: customerId,
-        workspaceId,
-      },
+      where: { id: customerId },
     });
 
     return NextResponse.json({
       success: true,
-      message: purgeAll
-        ? "Customer and all associated testimonials and media files were permanently erased."
-        : "Customer personal profile deleted. Associated testimonials retained anonymously.",
+      message: "Customer profile and associated records successfully removed.",
     });
   } catch (error) {
     console.error("Delete customer error:", error);
@@ -345,4 +522,3 @@ export async function DELETE(request: Request, context: RouteParams) {
     );
   }
 }
-

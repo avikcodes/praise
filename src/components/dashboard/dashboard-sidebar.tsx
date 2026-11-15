@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   LifeBuoy,
+  Mail,
   MessageSquareQuote,
   Settings,
   Users2,
@@ -36,6 +37,7 @@ const navigationItems: NavItem[] = [
   { label: "Testimonials", href: "/dashboard/testimonials", icon: MessageSquareQuote },
   { label: "Forms", href: "/dashboard/forms", icon: Inbox },
   { label: "Customers", href: "/dashboard/customers", icon: Users2 },
+  { label: "Invitations", href: "/dashboard/invitations", icon: Mail },
   { label: "Widgets", href: "/dashboard/widgets", icon: LayoutGrid },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];

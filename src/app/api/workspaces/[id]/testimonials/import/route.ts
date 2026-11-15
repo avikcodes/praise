@@ -4,6 +4,7 @@ import { requireWorkspaceMember } from "@/lib/auth/guards";
 import { formatCustomerMeta, INTERNAL_EMAIL_SUFFIX } from "@/lib/customers/utils";
 import { ImportExecutionPayload, ImportResult } from "@/lib/import/types";
 import { TestimonialStatus } from "@prisma/client";
+import { logModerationActivity } from "@/lib/moderation/activity";
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -34,6 +35,8 @@ export async function POST(request: Request, context: RouteParams) {
       defaultStatus = "PENDING",
       sourceLabel = "Import",
     } = payload;
+
+    const importBatchId = `batch_${Date.now()}`;
 
     if (!Array.isArray(records) || records.length === 0) {
       return NextResponse.json(
@@ -278,6 +281,7 @@ export async function POST(request: Request, context: RouteParams) {
           }
 
           // 7. Create Testimonial record (Unverified, never auto-published without user choice)
+          const rawItem = item as Record<string, unknown>;
           const createdTestimonial = await prisma.testimonial.create({
             data: {
               workspaceId,
@@ -288,6 +292,15 @@ export async function POST(request: Request, context: RouteParams) {
               type: "TEXT",
               status: statusToUse,
               isFeatured: false,
+              sourceType: typeof rawItem.sourceType === "string" ? rawItem.sourceType : (sourceLabel || "IMPORT"),
+              sourceUrl: typeof rawItem.sourceUrl === "string" ? rawItem.sourceUrl : (typeof rawItem.url === "string" ? String(rawItem.url) : null),
+              importBatchId,
+              importSourceDetailsJson: JSON.stringify({
+                sourceLabel,
+                rowNumber,
+                importedAt: new Date().toISOString(),
+                externalId: rawItem.id || null,
+              }),
               submittedAt,
               tags: {
                 create: tagIdsToConnect.map((tagId) => ({
@@ -297,6 +310,22 @@ export async function POST(request: Request, context: RouteParams) {
               },
             },
           });
+
+          logModerationActivity({
+            workspaceId,
+            testimonialId: createdTestimonial.id,
+            actorId: member.user?.id,
+            actorName: member.user?.name,
+            actorEmail: member.user?.email,
+            action: "SUBMITTED",
+            newStatus: statusToUse,
+            details: `Imported via bulk import (${sourceLabel || "Batch"}).`,
+            metadata: {
+              importBatchId,
+              sourceLabel,
+              rowNumber,
+            },
+          }).catch(() => {});
 
           importedIds.push(createdTestimonial.id);
           existingTextSet.add(norm);

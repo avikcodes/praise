@@ -5,12 +5,14 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
+  AlertTriangle,
   Archive,
   ArrowUpDown,
   Building2,
   Calendar,
   Check,
   CheckCircle2,
+  CheckSquare,
   Clock,
   Copy,
   Download,
@@ -18,19 +20,29 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  Film,
+  Globe,
+  History,
   Languages,
   LayoutGrid,
   List,
   Loader2,
   Mail,
+  MessageSquare,
   MessageSquareQuote,
   Mic,
+  Play,
   Plus,
   RefreshCw,
   RotateCcw,
   Save,
   Search,
+  Share2,
+  ShieldAlert,
   ShieldCheck,
+  Sliders,
+  Sparkles,
+  Split,
   Star,
   Tag as TagIcon,
   Trash2,
@@ -39,6 +51,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { formatTimestampSrt, SubtitleSegment, buildEstimatedSegmentsFromText } from "@/lib/video/subtitles";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
@@ -78,6 +91,26 @@ export type TestimonialItem = {
   status: "PENDING" | "APPROVED" | "REJECTED" | "ARCHIVED";
   isFeatured: boolean;
   recordingQuestionsJson?: string | null;
+  sourceType?: string | null;
+  sourceUrl?: string | null;
+  importBatchId?: string | null;
+  importSourceDetailsJson?: string | null;
+  isFlaggedDuplicate?: boolean;
+  duplicateOfId?: string | null;
+  notes?: Array<{
+    id: string;
+    content: string;
+    authorName?: string | null;
+    authorEmail?: string | null;
+    createdAt: string;
+  }>;
+  moderationActivities?: Array<{
+    id: string;
+    action: string;
+    actorName?: string | null;
+    details?: string | null;
+    createdAt: string;
+  }>;
   submittedAt: string;
   customer?: {
     id: string;
@@ -139,6 +172,23 @@ export type TestimonialItem = {
     editedAt?: string | null;
     completedAt?: string | null;
   } | null;
+  videoExportJobs?: {
+    id: string;
+    status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+    progress: number;
+    aspectRatio: "ORIGINAL" | "RATIO_16_9" | "RATIO_9_16" | "RATIO_1_1" | "RATIO_4_5";
+    resolutionProfile: "RES_720P" | "RES_1080P" | "RES_4K";
+    burnSubtitles: boolean;
+    subtitleFont: string;
+    subtitleSize: string;
+    subtitlePosition: string;
+    subtitleColor: string;
+    outputUrl?: string | null;
+    fileSizeBytes?: number | null;
+    sourceResolution?: string | null;
+    errorMessage?: string | null;
+    createdAt: string;
+  }[];
 };
 
 const PRESET_TAG_COLORS = [
@@ -164,6 +214,8 @@ function TestimonialsContent() {
   const projectFilter = searchParams.get("projectId") || "all";
   const formatFilter = searchParams.get("type") || "all";
   const tagFilter = searchParams.get("tagId") || "all";
+  const sourceFilter = searchParams.get("sourceType") || "all";
+  const duplicatesFilter = searchParams.get("duplicatesOnly") === "true";
   const dateRangeFilter = searchParams.get("dateRange") || "all";
   const sortBy = searchParams.get("sortBy") || "submittedAt";
   const sortOrder = searchParams.get("sortOrder") || "desc";
@@ -196,9 +248,37 @@ function TestimonialsContent() {
   const [bulkConfirmAction, setBulkConfirmAction] = useState<
     "APPROVE" | "REJECT" | "ARCHIVE" | "RESTORE" | "DELETE" | null
   >(null);
+  const [isBulkTagModalOpen, setIsBulkTagModalOpen] = useState(false);
+  const [selectedBulkTagIds, setSelectedBulkTagIds] = useState<string[]>([]);
+  const [isApplyingBulkTags, setIsApplyingBulkTags] = useState(false);
 
-  // Inspection modal state
+  // Inspection modal state & tabs
   const [selectedTestimonial, setSelectedTestimonial] = useState<TestimonialItem | null>(null);
+  const [detailModalTab, setDetailModalTab] = useState<"content" | "notes" | "history">("content");
+
+  // Internal Notes state
+  const [internalNotes, setInternalNotes] = useState<
+    Array<{ id: string; content: string; authorName?: string | null; authorEmail?: string | null; createdAt: string }>
+  >([]);
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [isAddingNote, setIsAddingNote] = useState(false);
+
+  // Moderation Activity History state
+  const [activityHistory, setActivityHistory] = useState<
+    Array<{ id: string; action: string; actorName?: string | null; details?: string | null; metadataJson?: string | null; createdAt: string }>
+  >([]);
+  const [isLoadingActivity, setIsLoadingActivity] = useState(false);
+
+  // Duplicate Detection state
+  const [itemDuplicates, setItemDuplicates] = useState<any[]>([]);
+  const [isLoadingItemDuplicates, setIsLoadingItemDuplicates] = useState(false);
+  const [isDuplicateScannerOpen, setIsDuplicateScannerOpen] = useState(false);
+  const [isScanningDuplicates, setIsScanningDuplicates] = useState(false);
+  const [duplicateClusters, setDuplicateClusters] = useState<any[]>([]);
+  const [activeClusterForReview, setActiveClusterForReview] = useState<any | null>(null);
+  const [isMergingPair, setIsMergingPair] = useState(false);
+  const [mergePrimaryId, setMergePrimaryId] = useState<string>("");
 
   // Single deletion confirm state
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -223,11 +303,237 @@ function TestimonialsContent() {
   const [transcriptEditLang, setTranscriptEditLang] = useState("");
   const [isSavingTranscript, setIsSavingTranscript] = useState(false);
 
+  // Video Studio (Subtitles & Video Export) state
+  const [studioActiveTab, setStudioActiveTab] = useState<"subtitles" | "export">("subtitles");
+  const [subtitleSegments, setSubtitleSegments] = useState<SubtitleSegment[]>([]);
+  const [isLoadingSubtitles, setIsLoadingSubtitles] = useState(false);
+  const [isSavingSubtitles, setIsSavingSubtitles] = useState(false);
+  const [exportAspectRatio, setExportAspectRatio] = useState<"ORIGINAL" | "RATIO_16_9" | "RATIO_9_16" | "RATIO_1_1" | "RATIO_4_5">("ORIGINAL");
+  const [exportResolution, setExportResolution] = useState<"RES_720P" | "RES_1080P" | "RES_4K">("RES_1080P");
+  const [exportBurnSubtitles, setExportBurnSubtitles] = useState(true);
+  const [exportSubtitleFont, setExportSubtitleFont] = useState<"sans-serif" | "serif" | "monospace">("sans-serif");
+  const [exportSubtitleSize, setExportSubtitleSize] = useState<"small" | "medium" | "large">("medium");
+  const [exportSubtitlePosition, setExportSubtitlePosition] = useState<"bottom" | "middle" | "top">("bottom");
+  const [exportSubtitleColor, setExportSubtitleColor] = useState("#ffffff");
+  const [isStartingExport, setIsStartingExport] = useState(false);
+  const [exportJobs, setExportJobs] = useState<TestimonialItem["videoExportJobs"]>([]);
+
   const handleOpenTestimonial = (item: TestimonialItem) => {
     setSelectedTestimonial(item);
+    setDetailModalTab("content");
+    setNewNoteText("");
     setIsEditingTranscript(false);
     setTranscriptEditText(item.transcription?.text || "");
     setTranscriptEditLang(item.transcription?.language || "en");
+    setExportJobs(item.videoExportJobs || []);
+    setStudioActiveTab("subtitles");
+    if (workspaceId) {
+      fetchNotes(item.id);
+      fetchActivity(item.id);
+      fetchItemDuplicates(item.id);
+      if (item.type === "VIDEO" || item.mediaAssets?.some((m) => m.type === "VIDEO")) {
+        fetchSubtitles(item.id);
+        fetchExportJobs(item.id);
+      }
+    }
+  };
+
+  const fetchNotes = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    setIsLoadingNotes(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/${testimonialId}/notes`);
+      if (res.ok) {
+        const data = await res.json();
+        setInternalNotes(data.notes || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingNotes(false);
+    }
+  };
+
+  const handleAddNote = async (testimonialId: string) => {
+    if (!workspaceId || !newNoteText.trim()) return;
+    setIsAddingNote(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/${testimonialId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newNoteText.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success("Note Added", "Internal team note saved.");
+        setInternalNotes((prev) => [data.note, ...prev]);
+        setNewNoteText("");
+        fetchActivity(testimonialId);
+      } else {
+        toast.error("Failed", "Could not save internal note.");
+      }
+    } catch {
+      toast.error("Network Error", "Unable to save team note.");
+    } finally {
+      setIsAddingNote(false);
+    }
+  };
+
+  const handleDeleteNote = async (testimonialId: string, noteId: string) => {
+    if (!workspaceId) return;
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/${testimonialId}/notes/${noteId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Note Removed", "Internal note deleted.");
+        setInternalNotes((prev) => prev.filter((n) => n.id !== noteId));
+        fetchActivity(testimonialId);
+      }
+    } catch {
+      toast.error("Error", "Could not delete note.");
+    }
+  };
+
+  const fetchActivity = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    setIsLoadingActivity(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/${testimonialId}/activity`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivityHistory(data.activities || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingActivity(false);
+    }
+  };
+
+  const fetchItemDuplicates = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    setIsLoadingItemDuplicates(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/${testimonialId}/duplicates`);
+      if (res.ok) {
+        const data = await res.json();
+        setItemDuplicates(data.matches || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingItemDuplicates(false);
+    }
+  };
+
+  const handleDismissDuplicate = async (testimonialId: string, matchedId?: string) => {
+    if (!workspaceId) return;
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/${testimonialId}/duplicates/dismiss`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchedTestimonialId: matchedId }),
+      });
+      if (res.ok) {
+        toast.success("Alert Dismissed", "Records confirmed distinct.");
+        setItemDuplicates((prev) => prev.filter((m) => m.matchedTestimonialId !== matchedId));
+        setDuplicateClusters((prev) => prev.filter((c) => !c.pairKey.includes(testimonialId)));
+        setActiveClusterForReview(null);
+        fetchTestimonials();
+      }
+    } catch {
+      toast.error("Error", "Could not dismiss duplicate alert.");
+    }
+  };
+
+  const handleMergeDuplicates = async (primaryId: string, duplicateId: string) => {
+    if (!workspaceId) return;
+    setIsMergingPair(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/${primaryId}/duplicates/merge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          duplicateId,
+          mergeTags: true,
+          mergeNotes: true,
+          actionOnDuplicate: "ARCHIVE",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Merge Successful", data.message || "Testimonials merged.");
+        setItemDuplicates((prev) => prev.filter((m) => m.matchedTestimonialId !== duplicateId));
+        setDuplicateClusters((prev) => prev.filter((c) => !c.pairKey.includes(duplicateId)));
+        setActiveClusterForReview(null);
+        if (selectedTestimonial?.id === duplicateId) {
+          setSelectedTestimonial(null);
+        } else if (selectedTestimonial?.id === primaryId) {
+          fetchNotes(primaryId);
+          fetchActivity(primaryId);
+        }
+        fetchTestimonials();
+      } else {
+        toast.error("Merge Failed", data.error || "Could not merge records.");
+      }
+    } catch {
+      toast.error("Network Error", "Unable to execute merge.");
+    } finally {
+      setIsMergingPair(false);
+    }
+  };
+
+  const handleScanWorkspaceDuplicates = async () => {
+    if (!workspaceId) return;
+    setIsScanningDuplicates(true);
+    setIsDuplicateScannerOpen(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/duplicates`);
+      if (res.ok) {
+        const data = await res.json();
+        setDuplicateClusters(data.duplicateClusters || []);
+        if (data.duplicateClusters?.length > 0) {
+          toast.success("Duplicates Detected", `Found ${data.duplicateClusters.length} possible duplicate cluster(s).`);
+        } else {
+          toast.success("Scan Complete", "No duplicate testimonials found.");
+        }
+      }
+    } catch {
+      toast.error("Error", "Unable to complete duplicate scan.");
+    } finally {
+      setIsScanningDuplicates(false);
+    }
+  };
+
+  const handleExecuteBulkTagging = async () => {
+    if (!workspaceId || selectedIds.length === 0 || selectedBulkTagIds.length === 0) return;
+    setIsApplyingBulkTags(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "TAG",
+          testimonialIds: selectedIds,
+          tagIds: selectedBulkTagIds,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success("Bulk Tagging Complete", data.message);
+        setIsBulkTagModalOpen(false);
+        setSelectedBulkTagIds([]);
+        setSelectedIds([]);
+        fetchTestimonials();
+      } else {
+        toast.error("Failed", "Unable to apply bulk tags.");
+      }
+    } catch {
+      toast.error("Network Error", "Bulk tagging failed.");
+    } finally {
+      setIsApplyingBulkTags(false);
+    }
   };
 
   const toast = useToast();
@@ -318,6 +624,8 @@ function TestimonialsContent() {
       if (ratingFilter !== "all") params.append("rating", ratingFilter);
       if (projectFilter !== "all") params.append("projectId", projectFilter);
       if (tagFilter !== "all") params.append("tagId", tagFilter);
+      if (sourceFilter !== "all") params.append("sourceType", sourceFilter);
+      if (duplicatesFilter) params.append("duplicatesOnly", "true");
       if (dateRangeFilter !== "all") params.append("dateRange", dateRangeFilter);
       if (sortBy) params.append("sortBy", sortBy);
       if (sortOrder) params.append("sortOrder", sortOrder);
@@ -355,6 +663,8 @@ function TestimonialsContent() {
     ratingFilter,
     projectFilter,
     tagFilter,
+    sourceFilter,
+    duplicatesFilter,
     dateRangeFilter,
     sortBy,
     sortOrder,
@@ -558,6 +868,179 @@ function TestimonialsContent() {
     }
   };
 
+  const fetchSubtitles = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    setIsLoadingSubtitles(true);
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/testimonials/${testimonialId}/subtitles`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setSubtitleSegments(data.segments || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingSubtitles(false);
+    }
+  };
+
+  const fetchExportJobs = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/testimonials/${testimonialId}/video-export`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setExportJobs(data.jobs || []);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSaveSubtitles = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    setIsSavingSubtitles(true);
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/testimonials/${testimonialId}/subtitles`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segments: subtitleSegments }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save subtitles.");
+      }
+      toast.success("Subtitles Saved", "Timed captions updated successfully.");
+      if (data.transcription) {
+        setSelectedTestimonial((prev) =>
+          prev && prev.id === testimonialId
+            ? { ...prev, transcription: data.transcription }
+            : prev,
+        );
+      }
+    } catch (err: unknown) {
+      toast.error(
+        "Failed to Save",
+        err instanceof Error ? err.message : "Error saving subtitles.",
+      );
+    } finally {
+      setIsSavingSubtitles(false);
+    }
+  };
+
+  const handleAddSubtitleSegment = () => {
+    setSubtitleSegments((prev) => {
+      const last = prev[prev.length - 1];
+      const start = last ? Math.round((last.end + 0.2) * 10) / 10 : 0;
+      const end = Math.round((start + 2.5) * 10) / 10;
+      return [
+        ...prev,
+        {
+          id: prev.length + 1,
+          start,
+          end,
+          text: "",
+        },
+      ];
+    });
+  };
+
+  const handleDeleteSubtitleSegment = (index: number) => {
+    setSubtitleSegments((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleUpdateSubtitleSegment = (
+    index: number,
+    field: "start" | "end" | "text",
+    value: string | number,
+  ) => {
+    setSubtitleSegments((prev) =>
+      prev.map((seg, idx) => {
+        if (idx !== index) return seg;
+        return {
+          ...seg,
+          [field]: field === "text" ? value : parseFloat(String(value)) || 0,
+        };
+      }),
+    );
+  };
+
+  const handleStartVideoExport = async (testimonialId: string) => {
+    if (!workspaceId) return;
+    setIsStartingExport(true);
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/testimonials/${testimonialId}/video-export`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            aspectRatio: exportAspectRatio,
+            resolutionProfile: exportResolution,
+            burnSubtitles: exportBurnSubtitles,
+            subtitleFont: exportSubtitleFont,
+            subtitleSize: exportSubtitleSize,
+            subtitlePosition: exportSubtitlePosition,
+            subtitleColor: exportSubtitleColor,
+            customSegments:
+              subtitleSegments.length > 0 ? subtitleSegments : undefined,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to start export job.");
+      }
+      toast.success(
+        "Export Job Queued",
+        "Video processing initialized in background.",
+      );
+      if (data.job) {
+        setExportJobs((prev) => [data.job, ...(prev || [])]);
+      }
+    } catch (err: unknown) {
+      toast.error(
+        "Export Failed",
+        err instanceof Error ? err.message : "Error starting video export.",
+      );
+    } finally {
+      setIsStartingExport(false);
+    }
+  };
+
+  const handleRetryVideoExport = async (
+    testimonialId: string,
+    jobId: string,
+  ) => {
+    if (!workspaceId) return;
+    try {
+      const res = await fetch(
+        `/api/workspaces/${workspaceId}/testimonials/${testimonialId}/video-export/${jobId}/retry`,
+        {
+          method: "POST",
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to retry export.");
+      }
+      toast.success("Job Re-queued", "Video export re-queued for processing.");
+      fetchExportJobs(testimonialId);
+    } catch (err: unknown) {
+      toast.error(
+        "Retry Failed",
+        err instanceof Error ? err.message : "Error retrying export.",
+      );
+    }
+  };
+
   // Toggle tag on a testimonial
   const handleToggleTag = async (testimonial: TestimonialItem, tagId: string) => {
     if (!workspaceId) return;
@@ -740,6 +1223,8 @@ function TestimonialsContent() {
       ratingFilter !== "all" ||
       projectFilter !== "all" ||
       tagFilter !== "all" ||
+      sourceFilter !== "all" ||
+      duplicatesFilter ||
       dateRangeFilter !== "all" ||
       formatFilter !== "all",
   );
@@ -750,6 +1235,8 @@ function TestimonialsContent() {
       rating: null,
       projectId: null,
       tagId: null,
+      sourceType: null,
+      duplicatesOnly: null,
       dateRange: null,
       type: null,
       page: null,
@@ -779,6 +1266,16 @@ function TestimonialsContent() {
         }
         actions={
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleScanWorkspaceDuplicates}
+              disabled={isScanningDuplicates}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-2xs hover:bg-amber-100 disabled:opacity-50 transition-colors"
+              title="Detect duplicate testimonials using multi-signal analysis"
+            >
+              {isScanningDuplicates ? <Loader2 size={13} className="animate-spin text-amber-600" /> : <Copy size={13} className="text-amber-600" />}
+              <span>Scan Duplicates</span>
+            </button>
             <Link
               href="/dashboard/testimonials/import"
               className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
@@ -858,7 +1355,7 @@ function TestimonialsContent() {
       {/* 2. Comprehensive Filter, Search & Sort Toolbar */}
       {/* ------------------------------------------------------------- */}
       <div className="rounded-2xl border border-line bg-white p-4 shadow-2xs space-y-3">
-        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-6">
           {/* Search text + customer */}
           <div className="relative lg:col-span-2">
             <Search size={14} className="absolute left-3 top-2.5 text-ink-400" />
@@ -870,6 +1367,22 @@ function TestimonialsContent() {
               className="w-full rounded-lg border border-line bg-white pl-9 pr-3 py-1.5 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
+
+          {/* Filter by Source Type */}
+          <select
+            value={sourceFilter}
+            onChange={(e) => updateQueryParam({ sourceType: e.target.value })}
+            className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs text-ink-700 focus:border-brand-500 focus:outline-none"
+          >
+            <option value="all">All Sources</option>
+            <option value="FORM">Public Forms</option>
+            <option value="IMPORT">CSV/JSON Import</option>
+            <option value="TWITTER">Twitter / X</option>
+            <option value="GOOGLE_REVIEWS">Google Reviews</option>
+            <option value="G2">G2 Crowd</option>
+            <option value="CAPTERRA">Capterra</option>
+            <option value="MANUAL">Manual Entry</option>
+          </select>
 
           {/* Filter by Project */}
           <select
@@ -914,9 +1427,22 @@ function TestimonialsContent() {
           </select>
         </div>
 
-        {/* Second Row: Date Filter + Sort By + View Mode Toggle */}
+        {/* Second Row: Date Filter + Sort By + Duplicate Toggle + View Mode */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-line/60 text-xs">
           <div className="flex flex-wrap items-center gap-2">
+            {/* Duplicates Toggle Pill */}
+            <button
+              type="button"
+              onClick={() => updateQueryParam({ duplicatesOnly: duplicatesFilter ? null : "true" })}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                duplicatesFilter
+                  ? "bg-amber-100 text-amber-900 border-amber-300 shadow-2xs"
+                  : "bg-white text-ink-600 border-line hover:bg-warm-100"
+              }`}
+            >
+              <Copy size={12} className={duplicatesFilter ? "text-amber-700" : "text-ink-400"} />
+              <span>Flagged Duplicates</span>
+            </button>
             {/* Date Range */}
             <div className="flex items-center gap-1.5 text-ink-600">
               <Calendar size={13} className="text-ink-400" />
@@ -1017,7 +1543,7 @@ function TestimonialsContent() {
               <button
                 type="button"
                 disabled={isBulkExecuting}
-                onClick={() => executeBulkAction("APPROVE")}
+                onClick={() => setBulkConfirmAction("APPROVE")}
                 className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1 font-semibold text-white hover:bg-emerald-700 transition-colors shadow-2xs disabled:opacity-50"
               >
                 <Check size={12} />
@@ -1029,7 +1555,7 @@ function TestimonialsContent() {
               <button
                 type="button"
                 disabled={isBulkExecuting}
-                onClick={() => executeBulkAction("REJECT")}
+                onClick={() => setBulkConfirmAction("REJECT")}
                 className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-3 py-1 font-semibold text-rose-700 hover:bg-rose-50 transition-colors shadow-2xs disabled:opacity-50"
               >
                 <X size={12} />
@@ -1041,7 +1567,7 @@ function TestimonialsContent() {
               <button
                 type="button"
                 disabled={isBulkExecuting}
-                onClick={() => executeBulkAction("ARCHIVE")}
+                onClick={() => setBulkConfirmAction("ARCHIVE")}
                 className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-3 py-1 font-medium text-ink-700 hover:bg-warm-100 transition-colors shadow-2xs disabled:opacity-50"
               >
                 <Archive size={12} />
@@ -1060,6 +1586,19 @@ function TestimonialsContent() {
                 <span>Restore to Approved</span>
               </button>
             )}
+
+            <button
+              type="button"
+              disabled={isBulkExecuting}
+              onClick={() => {
+                setSelectedBulkTagIds([]);
+                setIsBulkTagModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-white px-3 py-1 font-semibold text-brand-700 hover:bg-brand-50 transition-colors shadow-2xs disabled:opacity-50"
+            >
+              <TagIcon size={12} className="text-brand-600" />
+              <span>Bulk Tag</span>
+            </button>
 
             <button
               type="button"
@@ -1347,6 +1886,26 @@ function TestimonialsContent() {
                               <span className="truncate">{item.form.title}</span>
                             </div>
                           )}
+                          {item.sourceType && item.sourceType !== "FORM" && (
+                            <div className="flex items-center gap-1 text-[9px] text-brand-700 font-semibold uppercase">
+                              <Globe size={9} className="shrink-0" />
+                              <span>{item.sourceType}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1">
+                            {item.isFlaggedDuplicate && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-50 px-1 py-0.2 rounded border border-amber-300 font-bold">
+                                <AlertTriangle size={8} />
+                                <span>Duplicate</span>
+                              </span>
+                            )}
+                            {item.notes && item.notes.length > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] text-ink-600 bg-warm-100 px-1 py-0.2 rounded font-medium">
+                                <MessageSquare size={8} />
+                                <span>{item.notes.length}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
 
@@ -1953,8 +2512,156 @@ function TestimonialsContent() {
           }
         >
           <div className="space-y-5">
-            {/* Customer Profile Header */}
-            <div className="rounded-xl border border-line bg-warm-50/50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Modal Navigation Tabs: Content, Internal Notes, Activity History */}
+            <div className="flex items-center gap-1 border-b border-line pb-2 text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setDetailModalTab("content")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                  detailModalTab === "content"
+                    ? "bg-brand-50 text-brand-700 font-semibold shadow-2xs"
+                    : "text-ink-600 hover:bg-warm-100"
+                }`}
+              >
+                <FileText size={13} />
+                <span>Content &amp; Media</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailModalTab("notes")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                  detailModalTab === "notes"
+                    ? "bg-brand-50 text-brand-700 font-semibold shadow-2xs"
+                    : "text-ink-600 hover:bg-warm-100"
+                }`}
+              >
+                <MessageSquare size={13} />
+                <span>Internal Team Notes</span>
+                {internalNotes.length > 0 && (
+                  <span className="rounded-full bg-brand-100 px-1.5 py-0.2 text-[10px] font-bold text-brand-800">
+                    {internalNotes.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDetailModalTab("history")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                  detailModalTab === "history"
+                    ? "bg-brand-50 text-brand-700 font-semibold shadow-2xs"
+                    : "text-ink-600 hover:bg-warm-100"
+                }`}
+              >
+                <History size={13} />
+                <span>Activity &amp; Submission History</span>
+                {activityHistory.length > 0 && (
+                  <span className="rounded-full bg-warm-200 px-1.5 py-0.2 text-[10px] font-medium text-ink-700">
+                    {activityHistory.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* TAB 1: Content & Media */}
+            {detailModalTab === "content" && (
+              <div className="space-y-5">
+                {/* Duplicate Alert Banner if flagged */}
+                {(itemDuplicates.length > 0 || selectedTestimonial.isFlaggedDuplicate) && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs animate-in fade-in">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block">Possible Duplicate Testimonial Detected</span>
+                        <p className="text-[11px] text-amber-800 mt-0.5">
+                          {itemDuplicates[0]?.summary || "Multi-signal matching indicates this record may duplicate an existing submission."}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (itemDuplicates[0]) {
+                            setActiveClusterForReview({
+                              confidenceScore: itemDuplicates[0].confidenceScore,
+                              matchedSignals: itemDuplicates[0].matchedSignals,
+                              signalBreakdown: itemDuplicates[0].signalBreakdown,
+                              summary: itemDuplicates[0].summary,
+                              testimonialA: selectedTestimonial,
+                              testimonialB: itemDuplicates[0].matchedTestimonial,
+                            });
+                            setIsDuplicateScannerOpen(true);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 font-semibold text-white hover:bg-amber-700 transition-colors shadow-2xs"
+                      >
+                        <Copy size={12} />
+                        <span>Compare &amp; Resolve</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDismissDuplicate(selectedTestimonial.id, itemDuplicates[0]?.matchedTestimonialId)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+                      >
+                        <span>Dismiss Alert</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Source & Import Attribution Details */}
+                <div className="rounded-xl border border-line bg-warm-50/40 p-3.5 text-xs space-y-2 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-ink-700 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Globe size={13} className="text-brand-600" />
+                      <span>Source &amp; Import Attribution</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-[10px] font-semibold text-brand-700 border border-brand-200 uppercase">
+                      {selectedTestimonial.sourceType || "FORM"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-ink-700 text-[11px] pt-1">
+                    <div>
+                      <span className="text-ink-400 block text-[10px] font-medium">Original Source URL:</span>
+                      {selectedTestimonial.sourceUrl ? (
+                        <a
+                          href={selectedTestimonial.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-brand-600 hover:underline flex items-center gap-1 truncate font-medium mt-0.5"
+                        >
+                          <span className="truncate">{selectedTestimonial.sourceUrl}</span>
+                          <ExternalLink size={10} className="shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-ink-400 italic">Direct Public Form Submission</span>
+                      )}
+                    </div>
+
+                    <div>
+                      <span className="text-ink-400 block text-[10px] font-medium">Import Batch Details:</span>
+                      {selectedTestimonial.importSourceDetailsJson ? (() => {
+                        try {
+                          const meta = JSON.parse(selectedTestimonial.importSourceDetailsJson);
+                          return (
+                            <span className="text-ink-700 block mt-0.5 font-medium">
+                              {meta.sourceLabel || "Bulk Batch"} &bull; Row #{meta.rowNumber || "N/A"}{" "}
+                              {meta.importedAt && `• ${new Date(meta.importedAt).toLocaleDateString()}`}
+                            </span>
+                          );
+                        } catch {
+                          return <span className="text-ink-500">{selectedTestimonial.importSourceDetailsJson}</span>;
+                        }
+                      })() : (
+                        <span className="text-ink-400 italic">Submitted organically (not imported)</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Customer Profile Header */}
+                <div className="rounded-xl border border-line bg-warm-50/50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 {selectedTestimonial.customer?.avatarUrl ? (
                   <div className="h-12 w-12 rounded-full overflow-hidden border border-line shrink-0 bg-white shadow-2xs">
@@ -2403,6 +3110,506 @@ function TestimonialsContent() {
               </div>
             )}
 
+            {/* Video Studio: Subtitle Timing & Video Export */}
+            {(selectedTestimonial.type === "VIDEO" ||
+              selectedTestimonial.mediaAssets?.some((m) => m.type === "VIDEO")) && (
+              <div className="space-y-3 rounded-2xl border border-brand-200 bg-white p-4 shadow-2xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+                  <div className="flex items-center gap-2">
+                    <Film size={16} className="text-brand-600" />
+                    <div>
+                      <h5 className="font-bold text-xs text-ink-900 uppercase tracking-wider">
+                        Video Studio &amp; Export
+                      </h5>
+                      <span className="text-[11px] text-ink-500">
+                        Edit subtitle timestamps, burn captions, and export HD/4K social formats
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Studio Navigation Tabs */}
+                  <div className="inline-flex rounded-lg bg-warm-100 p-0.5 text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setStudioActiveTab("subtitles")}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
+                        studioActiveTab === "subtitles"
+                          ? "bg-white text-ink-900 shadow-2xs"
+                          : "text-ink-600 hover:text-ink-900"
+                      }`}
+                    >
+                      <FileText size={12} />
+                      <span>Subtitles &amp; Timings ({subtitleSegments.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStudioActiveTab("export")}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
+                        studioActiveTab === "export"
+                          ? "bg-white text-ink-900 shadow-2xs"
+                          : "text-ink-600 hover:text-ink-900"
+                      }`}
+                    >
+                      <Sliders size={12} />
+                      <span>Export Video ({exportJobs?.length || 0})</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* TAB 1: Subtitle Segment Timing & Editor */}
+                {studioActiveTab === "subtitles" && (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={handleAddSubtitleSegment}
+                          className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink-700 hover:bg-warm-100"
+                        >
+                          <Plus size={11} />
+                          <span>Add Segment</span>
+                        </button>
+                        {subtitleSegments.length === 0 && selectedTestimonial.transcription?.text && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const est = buildEstimatedSegmentsFromText(
+                                selectedTestimonial.transcription!.text!,
+                                selectedTestimonial.transcription?.durationSeconds || 30,
+                              );
+                              setSubtitleSegments(est);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100"
+                          >
+                            <Sparkles size={11} />
+                            <span>Auto-generate Timestamps</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Download SRT */}
+                        <a
+                          href={`/api/workspaces/${workspaceId}/testimonials/${selectedTestimonial.id}/subtitles?format=srt&download=1`}
+                          download
+                          className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink-700 hover:bg-warm-100 shadow-2xs"
+                          title="Download SubRip (.srt) subtitle file"
+                        >
+                          <Download size={11} />
+                          <span>Download SRT</span>
+                        </a>
+
+                        {/* Download VTT */}
+                        <a
+                          href={`/api/workspaces/${workspaceId}/testimonials/${selectedTestimonial.id}/subtitles?format=vtt&download=1`}
+                          download
+                          className="inline-flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs font-medium text-ink-700 hover:bg-warm-100 shadow-2xs"
+                          title="Download WebVTT (.vtt) subtitle file"
+                        >
+                          <Download size={11} />
+                          <span>Download VTT</span>
+                        </a>
+
+                        {/* Save Subtitles */}
+                        <button
+                          type="button"
+                          onClick={() => handleSaveSubtitles(selectedTestimonial.id)}
+                          disabled={isSavingSubtitles || subtitleSegments.length === 0}
+                          className="inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 shadow-2xs"
+                        >
+                          {isSavingSubtitles ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <Save size={11} />
+                          )}
+                          <span>Save Subtitles</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Subtitle Segments List */}
+                    {isLoadingSubtitles ? (
+                      <div className="flex items-center justify-center p-8 text-ink-400 gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        <span className="text-xs">Loading subtitle segments...</span>
+                      </div>
+                    ) : subtitleSegments.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-line p-6 text-center text-xs text-ink-500 space-y-1">
+                        <p>No subtitle segments configured yet.</p>
+                        <p className="text-[11px] text-ink-400">
+                          Add segments manually or click &ldquo;Auto-generate Timestamps&rdquo; to divide your transcript into timed captions.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                        {subtitleSegments.map((seg, idx) => (
+                          <div
+                            key={idx}
+                            className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-xl border border-line bg-warm-50/50 p-2 text-xs"
+                          >
+                            <span className="h-5 w-5 rounded-full bg-brand-100 text-brand-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                              {idx + 1}
+                            </span>
+
+                            {/* Timing inputs */}
+                            <div className="flex items-center gap-1 shrink-0 font-mono text-[11px]">
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={seg.start}
+                                onChange={(e) =>
+                                  handleUpdateSubtitleSegment(idx, "start", e.target.value)
+                                }
+                                title="Start time in seconds"
+                                className="w-16 rounded border border-line bg-white px-1.5 py-1 text-right text-ink-900"
+                              />
+                              <span className="text-ink-400">&rarr;</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={seg.end}
+                                onChange={(e) =>
+                                  handleUpdateSubtitleSegment(idx, "end", e.target.value)
+                                }
+                                title="End time in seconds"
+                                className="w-16 rounded border border-line bg-white px-1.5 py-1 text-right text-ink-900"
+                              />
+                              <span className="text-ink-400 text-[10px]">
+                                ({formatTimestampSrt(seg.start).slice(3, 8)})
+                              </span>
+                            </div>
+
+                            {/* Text input */}
+                            <input
+                              type="text"
+                              value={seg.text}
+                              onChange={(e) =>
+                                handleUpdateSubtitleSegment(idx, "text", e.target.value)
+                              }
+                              placeholder="Subtitle caption text..."
+                              className="flex-1 rounded border border-line bg-white px-2.5 py-1 text-xs text-ink-900"
+                            />
+
+                            {/* Delete button */}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSubtitleSegment(idx)}
+                              className="rounded p-1 text-ink-400 hover:text-rose-600 hover:bg-rose-50 shrink-0"
+                              title="Delete segment"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 2: Video Export Controls & Aspect Ratio */}
+                {studioActiveTab === "export" && (
+                  <div className="space-y-4 text-xs">
+                    {/* Controls Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Left: Aspect Ratio & Resolution Profile */}
+                      <div className="space-y-3">
+                        {/* Aspect Ratio */}
+                        <div>
+                          <label className="text-[11px] font-semibold text-ink-600 uppercase tracking-wider block mb-1.5">
+                            Target Aspect Ratio
+                          </label>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {[
+                              { id: "ORIGINAL", label: "Source Ratio", desc: "Keep original" },
+                              { id: "RATIO_16_9", label: "16:9 Landscape", desc: "YouTube / Desktop" },
+                              { id: "RATIO_9_16", label: "9:16 Vertical", desc: "Reels / TikTok" },
+                              { id: "RATIO_1_1", label: "1:1 Square", desc: "Instagram Feed" },
+                              { id: "RATIO_4_5", label: "4:5 Portrait", desc: "Social Media" },
+                            ].map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => setExportAspectRatio(opt.id as any)}
+                                className={`rounded-xl border p-2 text-left transition-colors ${
+                                  exportAspectRatio === opt.id
+                                    ? "border-brand-500 bg-brand-50/50 font-semibold text-brand-900 ring-1 ring-brand-500"
+                                    : "border-line bg-white hover:bg-warm-50 text-ink-700"
+                                }`}
+                              >
+                                <span className="block text-xs">{opt.label}</span>
+                                <span className="block text-[10px] text-ink-400 font-normal">
+                                  {opt.desc}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Resolution Profile */}
+                        <div>
+                          <label className="text-[11px] font-semibold text-ink-600 uppercase tracking-wider block mb-1.5">
+                            Export Resolution Profile
+                          </label>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                              { id: "RES_720P", label: "720p HD", desc: "Fast & lightweight" },
+                              { id: "RES_1080P", label: "1080p Full HD", desc: "Recommended" },
+                              { id: "RES_4K", label: "4K Ultra HD", desc: "Requires UHD source" },
+                            ].map((res) => (
+                              <button
+                                key={res.id}
+                                type="button"
+                                onClick={() => setExportResolution(res.id as any)}
+                                className={`rounded-xl border p-2 text-left transition-colors ${
+                                  exportResolution === res.id
+                                    ? "border-brand-500 bg-brand-50/50 font-semibold text-brand-900 ring-1 ring-brand-500"
+                                    : "border-line bg-white hover:bg-warm-50 text-ink-700"
+                                }`}
+                              >
+                                <span className="block text-xs">{res.label}</span>
+                                <span className="block text-[10px] text-ink-400 font-normal">
+                                  {res.desc}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* 4K Source Resolution Notice */}
+                          {exportResolution === "RES_4K" && (
+                            <div className="mt-2 rounded-lg bg-amber-50 p-2.5 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-1.5">
+                              <AlertCircle size={13} className="text-amber-600 shrink-0 mt-0.5" />
+                              <span>
+                                <strong>Hardware &amp; Quality Notice:</strong> 4K Ultra HD export requires source video recorded at 1440p or 4K. Low-resolution footage (720p/1080p) will be rejected to prevent artificial pixelation.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Subtitle Burn & Styling Options */}
+                      <div className="space-y-3 bg-warm-50/40 p-3 rounded-xl border border-line/60">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-semibold text-ink-700 uppercase tracking-wider">
+                            Burn Captions Into Video
+                          </label>
+                          <input
+                            type="checkbox"
+                            checked={exportBurnSubtitles}
+                            onChange={(e) => setExportBurnSubtitles(e.target.checked)}
+                            className="rounded border-line text-brand-500 focus:ring-brand-500 h-4 w-4"
+                          />
+                        </div>
+
+                        {exportBurnSubtitles && (
+                          <div className="space-y-2.5 pt-1">
+                            {/* Font Family */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] text-ink-500 font-medium block mb-1">
+                                  Font Style
+                                </label>
+                                <select
+                                  value={exportSubtitleFont}
+                                  onChange={(e) => setExportSubtitleFont(e.target.value as any)}
+                                  className="w-full rounded border border-line bg-white p-1 text-xs text-ink-800"
+                                >
+                                  <option value="sans-serif">Sans-serif (Modern)</option>
+                                  <option value="serif">Serif (Editorial)</option>
+                                  <option value="monospace">Monospace (Code)</option>
+                                </select>
+                              </div>
+
+                              {/* Size */}
+                              <div>
+                                <label className="text-[10px] text-ink-500 font-medium block mb-1">
+                                  Text Size
+                                </label>
+                                <select
+                                  value={exportSubtitleSize}
+                                  onChange={(e) => setExportSubtitleSize(e.target.value as any)}
+                                  className="w-full rounded border border-line bg-white p-1 text-xs text-ink-800"
+                                >
+                                  <option value="small">Small (Subtle)</option>
+                                  <option value="medium">Medium (Standard)</option>
+                                  <option value="large">Large (High-impact)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Position & Color */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[10px] text-ink-500 font-medium block mb-1">
+                                  Position
+                                </label>
+                                <select
+                                  value={exportSubtitlePosition}
+                                  onChange={(e) => setExportSubtitlePosition(e.target.value as any)}
+                                  className="w-full rounded border border-line bg-white p-1 text-xs text-ink-800"
+                                >
+                                  <option value="bottom">Bottom (Standard)</option>
+                                  <option value="middle">Middle (Center)</option>
+                                  <option value="top">Top (Headlines)</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] text-ink-500 font-medium block mb-1">
+                                  Caption Color
+                                </label>
+                                <div className="flex items-center gap-1.5 pt-0.5">
+                                  {[
+                                    { color: "#ffffff", label: "White" },
+                                    { color: "#ffeb3b", label: "Yellow" },
+                                    { color: "#7049d8", label: "Purple" },
+                                  ].map((c) => (
+                                    <button
+                                      key={c.color}
+                                      type="button"
+                                      onClick={() => setExportSubtitleColor(c.color)}
+                                      className={`h-6 w-6 rounded-full border shadow-2xs ${
+                                        exportSubtitleColor === c.color
+                                          ? "ring-2 ring-brand-500 ring-offset-1"
+                                          : "border-line"
+                                      }`}
+                                      style={{ backgroundColor: c.color }}
+                                      title={c.label}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={() => handleStartVideoExport(selectedTestimonial.id)}
+                            disabled={isStartingExport}
+                            className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 transition-colors shadow-2xs"
+                          >
+                            {isStartingExport ? (
+                              <Loader2 size={13} className="animate-spin" />
+                            ) : (
+                              <Film size={13} />
+                            )}
+                            <span>Start Video Export Job</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Export Job History & Status */}
+                    {exportJobs && exportJobs.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-line">
+                        <label className="text-[11px] font-semibold text-ink-600 uppercase tracking-wider block">
+                          Export History &amp; Downloads ({exportJobs.length})
+                        </label>
+                        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                          {exportJobs.map((job) => (
+                            <div
+                              key={job.id}
+                              className="rounded-xl border border-line bg-white p-3 space-y-2 shadow-2xs"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                                      job.status === "COMPLETED"
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : job.status === "FAILED"
+                                          ? "bg-rose-50 text-rose-700 border-rose-200"
+                                          : "bg-sky-50 text-sky-700 border-sky-200"
+                                    }`}
+                                  >
+                                    {job.status === "COMPLETED" && <CheckCircle2 size={10} />}
+                                    {job.status === "FAILED" && <AlertCircle size={10} />}
+                                    {(job.status === "QUEUED" || job.status === "PROCESSING") && (
+                                      <Loader2 size={10} className="animate-spin" />
+                                    )}
+                                    <span>{job.status}</span>
+                                  </span>
+
+                                  <span className="font-semibold text-ink-900 text-xs">
+                                    {job.resolutionProfile.replace("RES_", "")} &bull;{" "}
+                                    {job.aspectRatio.replace("RATIO_", "")}
+                                  </span>
+
+                                  {job.burnSubtitles && (
+                                    <span className="text-[10px] text-brand-600 bg-brand-50 px-1.5 py-0.2 rounded border border-brand-200 font-medium">
+                                      Captions Burned
+                                    </span>
+                                  )}
+                                </div>
+
+                                <span className="text-[10px] text-ink-400">
+                                  {new Date(job.createdAt).toLocaleTimeString()}
+                                </span>
+                              </div>
+
+                              {/* Progress bar for running jobs */}
+                              {(job.status === "QUEUED" || job.status === "PROCESSING") && (
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-[10px] text-sky-700 font-medium">
+                                    <span>Processing video encode...</span>
+                                    <span>{job.progress}%</span>
+                                  </div>
+                                  <div className="w-full bg-sky-100 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                      className="bg-brand-500 h-1.5 rounded-full transition-all duration-300"
+                                      style={{ width: `${Math.max(5, job.progress)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Error and retry control for failed jobs */}
+                              {job.status === "FAILED" && (
+                                <div className="flex items-center justify-between text-xs text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                                  <span className="text-[11px] truncate mr-2">
+                                    {job.errorMessage || "Transcoding pipeline error"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRetryVideoExport(selectedTestimonial.id, job.id)}
+                                    className="font-bold underline text-[11px] shrink-0 hover:text-rose-900"
+                                  >
+                                    Retry Export
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Completed download link */}
+                              {job.status === "COMPLETED" && job.outputUrl && (
+                                <div className="flex items-center justify-between pt-1 text-xs">
+                                  <span className="text-[11px] text-ink-500">
+                                    {job.fileSizeBytes
+                                      ? `${(job.fileSizeBytes / (1024 * 1024)).toFixed(1)} MB`
+                                      : "Ready for download"}
+                                  </span>
+                                  <a
+                                    href={`${job.outputUrl}?download=1`}
+                                    download
+                                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-700 shadow-2xs"
+                                  >
+                                    <Download size={11} />
+                                    <span>Download Video</span>
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Guided Recording Prompts Connected to Testimonial */}
             {selectedTestimonial.recordingQuestionsJson && (
               <div className="space-y-1.5">
@@ -2544,6 +3751,148 @@ function TestimonialsContent() {
                 </div>
               );
             })()}
+            {/* End of TAB 1: Content & Media */}
+            </div>
+          )}
+
+          {/* TAB 2: Internal Team Notes */}
+          {detailModalTab === "notes" && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-brand-200 bg-brand-50/40 p-3.5 flex items-start justify-between gap-2 text-xs text-brand-900 shadow-2xs">
+                <div className="flex items-start gap-2.5">
+                  <MessageSquare size={16} className="text-brand-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold block">Confidential Team Notes</span>
+                    <p className="text-[11px] text-brand-700 mt-0.5 leading-relaxed">
+                      Team notes are strictly internal to authorized workspace members. They are never shown to respondents or rendered in public widgets.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Note Composer */}
+              <div className="space-y-2 rounded-xl border border-line bg-white p-3.5 shadow-2xs">
+                <label className="text-[11px] font-semibold text-ink-600 uppercase tracking-wider block">
+                  Add Internal Note
+                </label>
+                <textarea
+                  rows={3}
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  placeholder="Record customer context, deal stage, moderation rationale, or verification notes..."
+                  className="w-full rounded-xl border border-line bg-warm-50/30 p-3 text-xs text-ink-900 placeholder:text-ink-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    disabled={!newNoteText.trim() || isAddingNote}
+                    onClick={() => handleAddNote(selectedTestimonial.id)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50 transition-colors shadow-2xs"
+                  >
+                    {isAddingNote ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                    <span>Save Team Note</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Notes List */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-semibold text-ink-500 uppercase tracking-wider block">
+                  Existing Notes ({internalNotes.length})
+                </span>
+                {isLoadingNotes ? (
+                  <div className="p-8 text-center text-xs text-ink-400">Loading notes...</div>
+                ) : internalNotes.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-ink-400 italic rounded-xl border border-dashed border-line">
+                    No internal team notes recorded yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {internalNotes.map((note) => (
+                      <div key={note.id} className="rounded-xl border border-line bg-white p-3.5 space-y-1.5 shadow-2xs">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-ink-900">
+                            {note.authorName || "Team Member"}
+                          </span>
+                          <div className="flex items-center gap-2 text-ink-400">
+                            <span>{new Date(note.createdAt).toLocaleString()}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNote(selectedTestimonial.id, note.id)}
+                              className="text-ink-400 hover:text-rose-600 p-0.5 rounded transition-colors"
+                              title="Delete note"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-ink-800 whitespace-pre-line leading-relaxed">
+                          {note.content}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: Activity & Submission History */}
+          {detailModalTab === "history" && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-line bg-warm-50/40 p-3.5 text-xs space-y-2 shadow-2xs">
+                <span className="font-semibold text-ink-700 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <History size={13} className="text-brand-600" />
+                  <span>Submission &amp; Moderation Ledger</span>
+                </span>
+                <p className="text-[11px] text-ink-600 leading-relaxed">
+                  Every lifecycle transition, approval change, and tag application is verifiably preserved in this audit trail.
+                </p>
+              </div>
+
+              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                {isLoadingActivity ? (
+                  <div className="p-8 text-center text-xs text-ink-400">Loading audit history...</div>
+                ) : activityHistory.length === 0 ? (
+                  <div className="rounded-xl border border-line bg-white p-3.5 text-xs text-ink-700 flex items-start gap-2.5">
+                    <CheckCircle2 size={15} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold block">Initial Submission</span>
+                      <p className="text-[11px] text-ink-500 mt-0.5">
+                        Recorded on {new Date(selectedTestimonial.submittedAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  activityHistory.map((act) => (
+                    <div key={act.id} className="flex items-start gap-3 rounded-xl border border-line bg-white p-3.5 text-xs shadow-2xs">
+                      <div className="h-6 w-6 rounded-full bg-brand-50 border border-brand-200 flex items-center justify-center shrink-0 mt-0.5 text-brand-700 font-bold text-[10px]">
+                        <History size={11} />
+                      </div>
+                      <div className="space-y-0.5 min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-ink-900">
+                            {act.action.replace(/_/g, " ")}
+                          </span>
+                          <span className="text-[10px] text-ink-400 shrink-0 font-mono">
+                            {new Date(act.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-ink-600 leading-relaxed">
+                          {act.details || `Logged by ${act.actorName || "System"}`}
+                        </p>
+                        {act.actorName && (
+                          <span className="text-[10px] text-ink-400 block pt-0.5">
+                            Actor: {act.actorName}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
           </div>
         </ModalDialog>
       )}
@@ -2695,8 +4044,38 @@ function TestimonialsContent() {
       />
 
       {/* ------------------------------------------------------------- */}
-      {/* 9. Bulk Deletion Confirmation Dialog */}
+      {/* 9. Bulk Moderation Confirmation Dialogs */}
       {/* ------------------------------------------------------------- */}
+      <ConfirmDialog
+        isOpen={bulkConfirmAction === "APPROVE"}
+        onClose={() => setBulkConfirmAction(null)}
+        onConfirm={() => executeBulkAction("APPROVE")}
+        title="Approve Selected Testimonials"
+        message={`Are you sure you want to approve ${selectedIds.length} testimonials? Approved testimonials become visible on active public widgets and walls.`}
+        confirmLabel={`Approve ${selectedIds.length} Testimonials`}
+        isDestructive={false}
+      />
+
+      <ConfirmDialog
+        isOpen={bulkConfirmAction === "REJECT"}
+        onClose={() => setBulkConfirmAction(null)}
+        onConfirm={() => executeBulkAction("REJECT")}
+        title="Reject Selected Testimonials"
+        message={`Are you sure you want to reject ${selectedIds.length} testimonials? Rejected testimonials are hidden from public display.`}
+        confirmLabel={`Reject ${selectedIds.length} Testimonials`}
+        isDestructive={true}
+      />
+
+      <ConfirmDialog
+        isOpen={bulkConfirmAction === "ARCHIVE"}
+        onClose={() => setBulkConfirmAction(null)}
+        onConfirm={() => executeBulkAction("ARCHIVE")}
+        title="Archive Selected Testimonials"
+        message={`Are you sure you want to archive ${selectedIds.length} testimonials? They will be retained in your workspace archive and hidden from default views.`}
+        confirmLabel={`Archive ${selectedIds.length} Testimonials`}
+        isDestructive={false}
+      />
+
       <ConfirmDialog
         isOpen={bulkConfirmAction === "DELETE"}
         onClose={() => setBulkConfirmAction(null)}
@@ -2708,7 +4087,284 @@ function TestimonialsContent() {
       />
 
       {/* ------------------------------------------------------------- */}
-      {/* 10. Testimonial Export Modal */}
+      {/* 10. Bulk Tagging Modal */}
+      {/* ------------------------------------------------------------- */}
+      <ModalDialog
+        isOpen={isBulkTagModalOpen}
+        onClose={() => setIsBulkTagModalOpen(false)}
+        title="Apply Tags in Bulk"
+        description={`Select workspace tags to apply across all ${selectedIds.length} selected testimonials.`}
+        maxWidth="md"
+        footer={
+          <div className="flex items-center justify-end gap-2 w-full">
+            <button
+              type="button"
+              onClick={() => setIsBulkTagModalOpen(false)}
+              className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-warm-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isApplyingBulkTags || selectedBulkTagIds.length === 0}
+              onClick={handleExecuteBulkTagging}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-600 disabled:opacity-50 transition-colors"
+            >
+              {isApplyingBulkTags && <Loader2 size={13} className="animate-spin" />}
+              <span>Apply {selectedBulkTagIds.length} Tag{selectedBulkTagIds.length === 1 ? "" : "s"}</span>
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-ink-600">
+            Choose which tags to associate with the {selectedIds.length} selected testimonial records:
+          </p>
+          {workspaceTags.length === 0 ? (
+            <div className="rounded-xl border border-line bg-warm-50/50 p-4 text-center text-xs text-ink-500">
+              No tags found in workspace. Create tags first in Tag Manager.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1">
+              {workspaceTags.map((tag) => {
+                const isChecked = selectedBulkTagIds.includes(tag.id);
+                return (
+                  <label
+                    key={tag.id}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                      isChecked
+                        ? "border-brand-500 bg-brand-50/40 text-brand-900"
+                        : "border-line bg-white hover:bg-warm-50 text-ink-800"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {
+                        setSelectedBulkTagIds((prev) =>
+                          prev.includes(tag.id)
+                            ? prev.filter((id) => id !== tag.id)
+                            : [...prev, tag.id]
+                        );
+                      }}
+                      className="rounded border-line text-brand-500 focus:ring-brand-500"
+                    />
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: tag.color || "#7049D8" }}
+                    />
+                    <span className="text-xs font-medium truncate">{tag.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </ModalDialog>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 11. Duplicate Detection Scanner Modal */}
+      {/* ------------------------------------------------------------- */}
+      <ModalDialog
+        isOpen={isDuplicateScannerOpen}
+        onClose={() => {
+          setIsDuplicateScannerOpen(false);
+          setActiveClusterForReview(null);
+        }}
+        title="Duplicate Detection Scanner"
+        description="Analyze workspace testimonials for potential duplicates across normalized text, customer identity, source URL, and media hash."
+        maxWidth="3xl"
+        footer={
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+            <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+              <ShieldAlert size={14} className="shrink-0" />
+              <span>Human Review Required: Testimonials are never automatically deleted or merged without explicit confirmation.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDuplicateScannerOpen(false);
+                setActiveClusterForReview(null);
+              }}
+              className="rounded-lg border border-line bg-white px-3.5 py-1.5 text-xs font-semibold text-ink-700 hover:bg-warm-100 transition-colors self-end"
+            >
+              Close Scanner
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          {isScanningDuplicates ? (
+            <div className="rounded-xl border border-line bg-warm-50/50 p-12 text-center space-y-3">
+              <Loader2 size={24} className="animate-spin text-brand-600 mx-auto" />
+              <div className="text-xs font-medium text-ink-800">
+                Scanning workspace testimonials for duplicate signals...
+              </div>
+              <p className="text-[11px] text-ink-500 max-w-sm mx-auto">
+                Comparing normalized content, customer email/identity, original source URLs, and media file hashes.
+              </p>
+            </div>
+          ) : duplicateClusters.length === 0 ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-8 text-center space-y-2">
+              <CheckCircle2 size={24} className="text-emerald-600 mx-auto" />
+              <div className="text-xs font-semibold text-emerald-900">
+                No Duplicates Detected
+              </div>
+              <p className="text-[11px] text-emerald-700 max-w-md mx-auto">
+                All testimonials in this workspace appear unique based on current matching criteria.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-xs text-ink-600 px-1">
+                <span>
+                  Found <strong className="text-ink-900">{duplicateClusters.length}</strong> possible duplicate cluster{duplicateClusters.length === 1 ? "" : "s"}:
+                </span>
+                <button
+                  type="button"
+                  onClick={handleScanWorkspaceDuplicates}
+                  disabled={isScanningDuplicates}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 hover:text-brand-700"
+                >
+                  <RefreshCw size={11} />
+                  <span>Rescan</span>
+                </button>
+              </div>
+
+              {duplicateClusters.map((cluster, idx) => {
+                const primary = cluster.primary || cluster.testimonialA;
+                const duplicate = cluster.duplicate || cluster.testimonialB;
+                const signals = cluster.signals || cluster.signalBreakdown || [];
+                const compositeScore = cluster.compositeScore ?? cluster.confidenceScore ?? 0;
+                if (!primary || !duplicate) return null;
+                return (
+                  <div
+                    key={cluster.pairKey || idx}
+                    className="rounded-xl border border-line bg-white shadow-2xs overflow-hidden"
+                  >
+                    {/* Header with Match Score & Matching Signals */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-warm-50/80 border-b border-line text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-ink-900">Cluster #{idx + 1}</span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            compositeScore >= 0.85
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
+                          }`}
+                        >
+                          {Math.round(compositeScore * 100)}% Match
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {signals.map((sig: any, sIdx: number) => (
+                          <span
+                            key={sIdx}
+                            className="text-[10px] bg-white border border-line px-2 py-0.5 rounded-md text-ink-600 font-medium"
+                          >
+                            {sig.type === "TEXT_EXACT" && "Identical Text"}
+                            {sig.type === "TEXT_SIMILAR" && `Similar Text (${Math.round((sig.score || 0) * 100)}%)`}
+                            {sig.type === "CUSTOMER_IDENTITY" && "Same Customer"}
+                            {sig.type === "SOURCE_URL" && "Identical Source URL"}
+                            {sig.type === "MEDIA_HASH" && "Matching Media File"}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Side-by-Side Comparison */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-line text-xs">
+                      {/* Left: Record A */}
+                      <div className="p-3.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-ink-900">
+                            {primary.customer?.name || "Anonymous"}
+                          </span>
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-line bg-warm-50 text-ink-600">
+                            {primary.status}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-ink-400">
+                          {primary.customer?.email || primary.customer?.company || "No contact info"} •{" "}
+                          {new Date(primary.submittedAt).toLocaleDateString()}
+                        </div>
+                        <div className="text-ink-700 bg-warm-50/60 p-2.5 rounded-lg border border-line/60 italic text-[11px] line-clamp-3">
+                          &ldquo;{primary.content}&rdquo;
+                        </div>
+                        {primary.sourceType && (
+                          <div className="text-[10px] text-ink-400">
+                            Source: <span className="font-medium text-ink-600">{primary.sourceType}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: Record B */}
+                      <div className="p-3.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-ink-900">
+                            {duplicate.customer?.name || "Anonymous"}
+                          </span>
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-line bg-warm-50 text-ink-600">
+                            {duplicate.status}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-ink-400">
+                          {duplicate.customer?.email || duplicate.customer?.company || "No contact info"} •{" "}
+                          {new Date(duplicate.submittedAt).toLocaleDateString()}
+                        </div>
+                        <div className="text-ink-700 bg-warm-50/60 p-2.5 rounded-lg border border-line/60 italic text-[11px] line-clamp-3">
+                          &ldquo;{duplicate.content}&rdquo;
+                        </div>
+                        {duplicate.sourceType && (
+                          <div className="text-[10px] text-ink-400">
+                            Source: <span className="font-medium text-ink-600">{duplicate.sourceType}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Resolution Actions */}
+                    <div className="p-3 bg-warm-50/50 border-t border-line flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-[11px] text-ink-500">
+                        Human Confirmation:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleDismissDuplicate(primary.id, duplicate.id)}
+                          className="px-2.5 py-1 rounded-lg border border-line bg-white text-ink-700 font-medium hover:bg-warm-100 transition-colors text-[11px]"
+                        >
+                          Keep Both (Distinct)
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isMergingPair}
+                          onClick={() => handleMergeDuplicates(primary.id, duplicate.id)}
+                          className="px-2.5 py-1 rounded-lg bg-brand-500 text-white font-medium hover:bg-brand-600 transition-colors text-[11px] disabled:opacity-50"
+                        >
+                          Merge into Record A
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isMergingPair}
+                          onClick={() => handleMergeDuplicates(duplicate.id, primary.id)}
+                          className="px-2.5 py-1 rounded-lg border border-brand-200 bg-brand-50 text-brand-700 font-medium hover:bg-brand-100 transition-colors text-[11px] disabled:opacity-50"
+                        >
+                          Merge into Record B
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </ModalDialog>
+
+      {/* ------------------------------------------------------------- */}
+      {/* 12. Testimonial Export Modal */}
       {/* ------------------------------------------------------------- */}
       <ExportModal
         isOpen={isExportModalOpen}

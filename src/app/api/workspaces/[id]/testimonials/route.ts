@@ -19,6 +19,8 @@ export async function GET(request: Request, context: RouteParams) {
     const formId = searchParams.get("formId");
     const type = searchParams.get("type");
     const tagId = searchParams.get("tagId");
+    const sourceType = searchParams.get("sourceType");
+    const duplicatesOnly = searchParams.get("duplicatesOnly") === "true";
     const dateRange = searchParams.get("dateRange");
     const search = searchParams.get("search");
     const sortBy = searchParams.get("sortBy") || "submittedAt";
@@ -58,6 +60,14 @@ export async function GET(request: Request, context: RouteParams) {
           tagId,
         },
       };
+    }
+
+    if (sourceType && sourceType !== "all") {
+      where.sourceType = sourceType;
+    }
+
+    if (duplicatesOnly) {
+      where.isFlaggedDuplicate = true;
     }
 
     if (dateRange && dateRange !== "all") {
@@ -114,8 +124,19 @@ export async function GET(request: Request, context: RouteParams) {
           transcriptions: {
             orderBy: { createdAt: "desc" },
           },
+          videoExportJobs: {
+            orderBy: { createdAt: "desc" },
+            take: 3,
+          },
           tags: {
             include: { tag: true },
+          },
+          notes: {
+            orderBy: { createdAt: "desc" },
+          },
+          moderationActivities: {
+            orderBy: { createdAt: "desc" },
+            take: 5,
           },
         },
         orderBy,
@@ -153,6 +174,7 @@ export async function GET(request: Request, context: RouteParams) {
           t.transcriptions?.[0] ||
           t.mediaAssets?.find((m) => m.transcription)?.transcription ||
           null,
+        videoExportJobs: t.videoExportJobs || [],
       })),
       counts: countMap,
       pagination: {

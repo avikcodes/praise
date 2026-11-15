@@ -4,20 +4,116 @@ import { requireWorkspaceMember } from "@/lib/auth/guards";
 import { TestimonialStatus } from "@prisma/client";
 import { getStorageEngine } from "@/lib/storage/engine";
 import { recordTombstone } from "@/lib/privacy/consent";
+import { logModerationActivity } from "@/lib/moderation/activity";
 
 type RouteParams = {
   params: Promise<{ id: string; testimonialId: string }>;
 };
 
+/**
+ * GET: Retrieves a single testimonial with all associated moderation details.
+ */
+export async function GET(request: Request, context: RouteParams) {
+  try {
+    const { id: workspaceId, testimonialId } = await context.params;
+    await requireWorkspaceMember(workspaceId);
+
+    const testimonial = await prisma.testimonial.findFirst({
+      where: { id: testimonialId, workspaceId },
+      include: {
+        customer: true,
+        form: {
+          select: { id: true, title: true, slug: true },
+        },
+        project: {
+          select: { id: true, name: true, slug: true, color: true },
+        },
+        tags: {
+          include: { tag: true },
+        },
+        notes: {
+          orderBy: { createdAt: "desc" },
+        },
+        moderationActivities: {
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        },
+        mediaAssets: {
+          include: {
+            transcription: true,
+          },
+        },
+        transcriptions: {
+          orderBy: { createdAt: "desc" },
+        },
+        videoExportJobs: {
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        },
+        consentRecords: {
+          take: 1,
+          orderBy: { grantedAt: "desc" },
+        },
+      },
+    });
+
+    if (!testimonial) {
+      return NextResponse.json({ error: "Testimonial not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      testimonial: {
+        ...testimonial,
+        consentRecord: testimonial.consentRecords[0] || null,
+        transcription:
+          testimonial.transcriptions?.[0] ||
+          testimonial.mediaAssets?.find((m) => m.transcription)?.transcription ||
+          null,
+        videoExportJobs: testimonial.videoExportJobs || [],
+      },
+    });
+  } catch (error: unknown) {
+    const status =
+      typeof error === "object" && error && "status" in error
+        ? Number(error.status)
+        : 500;
+    const message =
+      error instanceof Error ? error.message : "Failed to fetch testimonial.";
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
 export async function PATCH(request: Request, context: RouteParams) {
   try {
     const { id: workspaceId, testimonialId } = await context.params;
-    await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
+    const { user } = await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
 
     const body = await request.json();
-    const { status, isFeatured, tagIds } = body;
+    const {
+      status,
+      isFeatured,
+      tagIds,
+      sourceType,
+      sourceUrl,
+      importSourceDetailsJson,
+    } = body;
 
-    const data: { status?: TestimonialStatus; isFeatured?: boolean } = {};
+    const currentRecord = await prisma.testimonial.findFirst({
+      where: { id: testimonialId, workspaceId },
+      select: { id: true, status: true, sourceType: true, sourceUrl: true },
+    });
+
+    if (!currentRecord) {
+      return NextResponse.json({ error: "Testimonial not found." }, { status: 404 });
+    }
+
+    const data: {
+      status?: TestimonialStatus;
+      isFeatured?: boolean;
+      sourceType?: string;
+      sourceUrl?: string;
+      importSourceDetailsJson?: string;
+    } = {};
 
     if (status && ["PENDING", "APPROVED", "REJECTED", "ARCHIVED"].includes(status)) {
       data.status = status as TestimonialStatus;
@@ -25,6 +121,18 @@ export async function PATCH(request: Request, context: RouteParams) {
 
     if (typeof isFeatured === "boolean") {
       data.isFeatured = isFeatured;
+    }
+
+    if (typeof sourceType === "string") {
+      data.sourceType = sourceType;
+    }
+
+    if (typeof sourceUrl === "string") {
+      data.sourceUrl = sourceUrl;
+    }
+
+    if (typeof importSourceDetailsJson === "string") {
+      data.importSourceDetailsJson = importSourceDetailsJson;
     }
 
     // Atomic update including tags if provided
@@ -84,6 +192,13 @@ export async function PATCH(request: Request, context: RouteParams) {
           tags: {
             include: { tag: true },
           },
+          notes: {
+            orderBy: { createdAt: "desc" },
+          },
+          moderationActivities: {
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          },
           mediaAssets: {
             include: {
               transcription: true,
@@ -92,6 +207,10 @@ export async function PATCH(request: Request, context: RouteParams) {
           transcriptions: {
             orderBy: { createdAt: "desc" },
           },
+          videoExportJobs: {
+            orderBy: { createdAt: "desc" },
+            take: 5,
+          },
           consentRecords: {
             take: 1,
             orderBy: { grantedAt: "desc" },
@@ -99,6 +218,54 @@ export async function PATCH(request: Request, context: RouteParams) {
         },
       });
     });
+
+    // Log moderation activity if status changed
+    if (status && status !== currentRecord.status) {
+      await logModerationActivity({
+        workspaceId,
+        testimonialId,
+        actorId: user?.id,
+        actorName: user?.name,
+        actorEmail: user?.email,
+        action:
+          status === "APPROVED"
+            ? "APPROVED"
+            : status === "REJECTED"
+              ? "REJECTED"
+              : status === "ARCHIVED"
+                ? "ARCHIVED"
+                : "RESTORED",
+        previousStatus: currentRecord.status,
+        newStatus: status,
+        details: `Status updated from ${currentRecord.status} to ${status}.`,
+      });
+    }
+
+    if (Array.isArray(tagIds)) {
+      await logModerationActivity({
+        workspaceId,
+        testimonialId,
+        actorId: user?.id,
+        actorName: user?.name,
+        actorEmail: user?.email,
+        action: "TAGS_UPDATED",
+        details: `Updated associated tags count to ${tagIds.length}.`,
+        metadata: { tagIds },
+      });
+    }
+
+    if (sourceType || sourceUrl) {
+      await logModerationActivity({
+        workspaceId,
+        testimonialId,
+        actorId: user?.id,
+        actorName: user?.name,
+        actorEmail: user?.email,
+        action: "SOURCE_UPDATED",
+        details: `Updated testimonial source details: ${sourceType || currentRecord.sourceType}.`,
+        metadata: { sourceType, sourceUrl },
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -110,6 +277,7 @@ export async function PATCH(request: Request, context: RouteParams) {
               updated.transcriptions?.[0] ||
               updated.mediaAssets?.find((m) => m.transcription)?.transcription ||
               null,
+            videoExportJobs: updated.videoExportJobs || [],
           }
         : null,
     });
