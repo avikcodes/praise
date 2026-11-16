@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Praise - Testimonial Clipper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header Bar -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">P</div>
+        <div>
+          <h1 class="brand-title">Praise</h1>
+          <p class="brand-subtitle">Testimonial Clipper</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <span id="connection-pill" class="status-pill disconnected">Not Connected</span>
+        <button id="toggle-settings-btn" class="icon-btn" title="Connection Settings">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Global Notice Banner -->
+    <div id="notice-banner" class="banner hidden"></div>
+
+    <!-- VIEW 1: SETTINGS / CONNECTION SETUP -->
+    <section id="settings-view" class="view hidden">
+      <div class="view-header">
+        <h2>Connection Configuration</h2>
+        <p>Connect this browser extension to your Praise instance.</p>
+      </div>
+
+      <div class="form-group">
+        <label for="server-url">Praise Server URL</label>
+        <input type="url" id="server-url" placeholder="http://localhost:3000" value="http://localhost:3000">
+        <span class="help-text">Base URL of your self-hosted or cloud Praise deployment.</span>
+      </div>
+
+      <div class="form-group">
+        <label for="api-key">Praise API Key</label>
+        <input type="password" id="api-key" placeholder="praise_live_sk_...">
+        <span class="help-text">Generate a Secret API Key in Praise &rarr; Workspace Settings &rarr; API Keys.</span>
+      </div>
+
+      <button id="verify-btn" class="btn primary full-width">
+        <span class="btn-text">Connect &amp; Verify Permissions</span>
+        <div class="spinner hidden"></div>
+      </button>
+
+      <div class="security-note">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <span>Credentials are stored locally in extension storage and never shared.</span>
+      </div>
+    </section>
+
+    <!-- VIEW 2: CAPTURE & EDIT FORM -->
+    <section id="capture-view" class="view">
+      <div class="selection-action-bar">
+        <span class="section-label">Selected Testimonial Content</span>
+        <button id="refresh-selection-btn" class="text-btn" title="Re-read highlighted text on current tab">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+          </svg>
+          <span>Grab Selected Text</span>
+        </button>
+      </div>
+
+      <!-- Duplicate Detection Alert -->
+      <div id="duplicate-warning" class="warning-card hidden">
+        <div class="warning-icon">⚠️</div>
+        <div class="warning-body">
+          <strong>Possible Duplicate</strong>
+          <p id="duplicate-reason-text">A testimonial with matching text or URL already exists in this workspace.</p>
+        </div>
+      </div>
+
+      <form id="capture-form">
+        <div class="form-group">
+          <textarea id="testimonial-content" rows="4" required placeholder="Highlight text on the webpage and click 'Grab Selected Text' or paste quote here..."></textarea>
+          <div class="char-count"><span id="char-count">0</span> characters</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="author-name">Customer Name <span class="required">*</span></label>
+            <input type="text" id="author-name" required placeholder="Jane Doe">
+          </div>
+
+          <div class="form-group flex-1">
+            <label for="author-handle">Handle / Username</label>
+            <input type="text" id="author-handle" placeholder="@janedoe">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="author-title">Role / Title</label>
+            <input type="text" id="author-title" placeholder="VP of Product">
+          </div>
+
+          <div class="form-group flex-1">
+            <label for="author-company">Company</label>
+            <input type="text" id="author-company" placeholder="Acme Inc">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="source-platform">Source Platform</label>
+            <select id="source-platform">
+              <option value="X">X (Twitter)</option>
+              <option value="LINKEDIN">LinkedIn</option>
+              <option value="PRODUCT_HUNT">Product Hunt</option>
+              <option value="G2">G2 Crowd</option>
+              <option value="TRUSTPILOT">Trustpilot</option>
+              <option value="REDDIT">Reddit</option>
+              <option value="GOOGLE">Google Reviews</option>
+              <option value="CAPTERRA">Capterra</option>
+              <option value="WEB">Custom Webpage</option>
+            </select>
+          </div>
+
+          <div class="form-group flex-1">
+            <label>Rating</label>
+            <div class="star-rating" id="star-rating-container">
+              <span class="star active" data-rating="1">★</span>
+              <span class="star active" data-rating="2">★</span>
+              <span class="star active" data-rating="3">★</span>
+              <span class="star active" data-rating="4">★</span>
+              <span class="star active" data-rating="5">★</span>
+            </div>
+            <input type="hidden" id="rating-val" value="5">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="source-url">Source URL <span class="required">*</span></label>
+          <input type="url" id="source-url" required placeholder="https://...">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="workspace-select">Target Workspace</label>
+            <select id="workspace-select"></select>
+          </div>
+
+          <div class="form-group flex-1">
+            <label for="project-select">Assign Project</label>
+            <select id="project-select">
+              <option value="">General (No project)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="internal-note">Internal Team Note (Private)</label>
+          <input type="text" id="internal-note" placeholder="e.g. Captured from CEO mention during launch week">
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="reset-btn" class="btn secondary">Clear</button>
+          <button type="submit" id="save-btn" class="btn primary flex-1">
+            <span class="btn-text">Save to Moderation Queue</span>
+            <div class="spinner hidden"></div>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- VIEW 3: SUCCESS CONFIRMATION -->
+    <section id="success-view" class="view hidden">
+      <div class="success-card">
+        <div class="success-badge">✓</div>
+        <h2>Testimonial Captured!</h2>
+        <p class="success-message">
+          Your customer praise has been captured with full source provenance and queued in your moderation inbox.
+        </p>
+
+        <div class="pending-notice">
+          🔒 <strong>Safety Guarantee:</strong> Stored with status <code class="mono">PENDING</code> and held private until approved by a workspace member.
+        </div>
+
+        <div class="success-actions">
+          <a id="view-inbox-link" target="_blank" class="btn primary full-width">Open in Praise Moderation Queue</a>
+          <button id="capture-another-btn" class="btn secondary full-width">Capture Another Quote</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Protected by Praise Non-Scraping Guarantee</span>
+      <span class="dot">&bull;</span>
+      <span>v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

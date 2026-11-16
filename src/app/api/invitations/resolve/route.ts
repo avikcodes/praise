@@ -44,49 +44,122 @@ export async function GET(request: Request) {
       },
     });
 
-    if (!recipient) {
+    if (recipient) {
+      // Mark as CLICKED/OPENED if not yet submitted
+      if (recipient.status === "DELIVERED" || recipient.status === "SENT" || recipient.status === "PENDING") {
+        await prisma.invitationRecipient.update({
+          where: { id: recipient.id },
+          data: {
+            status: "CLICKED",
+            clickedAt: recipient.clickedAt || new Date(),
+            openedAt: recipient.openedAt || new Date(),
+          },
+        });
+
+        // Increment campaign clicked count
+        await prisma.emailCampaign.update({
+          where: { id: recipient.campaignId },
+          data: {
+            clickedCount: { increment: 1 },
+            openedCount: recipient.openedAt ? undefined : { increment: 1 },
+          },
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        type: "EMAIL",
+        recipient: {
+          id: recipient.id,
+          name: recipient.name,
+          email: recipient.email,
+          company: recipient.company,
+          title: recipient.title,
+          token: recipient.token,
+          status: recipient.status,
+        },
+        form: recipient.campaign.form,
+        campaign: {
+          id: recipient.campaign.id,
+          name: recipient.campaign.name,
+        },
+      });
+    }
+
+    // Check if token belongs to an SMS invitation recipient
+    const smsRecipient = await prisma.smsRecipient.findUnique({
+      where: { token: token.trim() },
+      include: {
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            workspaceId: true,
+            form: {
+              select: {
+                id: true,
+                slug: true,
+                title: true,
+              },
+            },
+          },
+        },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true,
+            company: true,
+            title: true,
+            avatarUrl: true,
+            socialHandle: true,
+          },
+        },
+      },
+    });
+
+    if (!smsRecipient) {
       return NextResponse.json(
         { error: "Invitation link is invalid or has expired." },
         { status: 404 },
       );
     }
 
-    // Mark as CLICKED/OPENED if not yet submitted
-    if (recipient.status === "DELIVERED" || recipient.status === "SENT" || recipient.status === "PENDING") {
-      await prisma.invitationRecipient.update({
-        where: { id: recipient.id },
+    // Mark SMS recipient as CLICKED
+    if (smsRecipient.status === "DELIVERED" || smsRecipient.status === "SENT" || smsRecipient.status === "PENDING") {
+      await prisma.smsRecipient.update({
+        where: { id: smsRecipient.id },
         data: {
           status: "CLICKED",
-          clickedAt: recipient.clickedAt || new Date(),
-          openedAt: recipient.openedAt || new Date(),
+          clickedAt: smsRecipient.clickedAt || new Date(),
         },
       });
 
-      // Increment campaign clicked count
-      await prisma.emailCampaign.update({
-        where: { id: recipient.campaignId },
+      await prisma.smsCampaign.update({
+        where: { id: smsRecipient.campaignId },
         data: {
           clickedCount: { increment: 1 },
-          openedCount: recipient.openedAt ? undefined : { increment: 1 },
         },
       });
     }
 
     return NextResponse.json({
       success: true,
+      type: "SMS",
       recipient: {
-        id: recipient.id,
-        name: recipient.name,
-        email: recipient.email,
-        company: recipient.company,
-        title: recipient.title,
-        token: recipient.token,
-        status: recipient.status,
+        id: smsRecipient.id,
+        name: smsRecipient.name,
+        email: smsRecipient.customer?.email || null,
+        company: smsRecipient.customer?.company || null,
+        phoneNumber: smsRecipient.phoneNumber,
+        token: smsRecipient.token,
+        status: smsRecipient.status,
       },
-      form: recipient.campaign.form,
+      form: smsRecipient.campaign.form,
       campaign: {
-        id: recipient.campaign.id,
-        name: recipient.campaign.name,
+        id: smsRecipient.campaign.id,
+        name: smsRecipient.campaign.name,
       },
     });
   } catch (error: any) {

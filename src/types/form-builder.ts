@@ -123,6 +123,25 @@ export type CollectionFormDetail = {
   videoInstructions?: string | null;
   recordingQuestionsJson?: string | null;
 
+  // Customer Rewards Configuration
+  rewardEnabled?: boolean;
+  rewardProgramId?: string | null;
+  rewardProgram?: {
+    id: string;
+    name: string;
+    description?: string | null;
+    rewardType: string;
+    couponCode?: string | null;
+    rewardUrl?: string | null;
+    digitalGiftUrl?: string | null;
+    instructions?: string | null;
+    disclosureText?: string | null;
+    deliveryMethod: string;
+    isActive: boolean;
+    wheelEnabled?: boolean;
+    wheelConfigJson?: string | null;
+  } | null;
+
   isPublished: boolean;
   submissionsCount?: number;
   fields: FormFieldItem[];

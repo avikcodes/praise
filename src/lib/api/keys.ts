@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import { prisma } from "@/lib/db/client";
+import { prisma } from "../db/client.ts";
 import { ApiKeyType, WorkspaceRole } from "@prisma/client";
-import { ApiKeyContext } from "./types";
+import type { ApiKeyContext } from "./types.ts";
 
 /**
  * Computes a secure SHA-256 hash of an API key token.

@@ -6,10 +6,14 @@ import {
   ArrowLeft,
   ArrowRight,
   Calendar,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Copy,
+  ExternalLink,
   FileText,
+  Gift,
   Info,
   Loader2,
   Mic,
@@ -41,6 +45,7 @@ import {
   RecordedMediaResult,
 } from "@/components/ui/browser-media-recorder";
 import { PraiseLogo } from "@/components/brand";
+import { RewardWheel } from "@/components/rewards/reward-wheel";
 import { cn } from "@/lib/utils";
 
 type PublicFormClientProps = {
@@ -161,6 +166,8 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
+  const [submittedReward, setSubmittedReward] = useState<any | null>(null);
+  const [copiedRewardCode, setCopiedRewardCode] = useState(false);
   const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(4);
 
@@ -578,6 +585,9 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
       }
 
       setIsSuccess(true);
+      if (data.reward) {
+        setSubmittedReward(data.reward);
+      }
       if (data.redirectUrl) {
         setRedirectUrl(data.redirectUrl);
       }
@@ -1681,6 +1691,28 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
               {form.description}
             </p>
           )}
+
+          {/* Reward Disclosure Banner */}
+          {!isSuccess && form.rewardEnabled && form.rewardProgram?.isActive && (
+            <div className="mt-3.5 mx-auto max-w-md rounded-xl border border-brand-200 bg-brand-50/60 p-3 text-left shadow-2xs">
+              <div className="flex items-center gap-2 text-brand-900 font-semibold text-xs">
+                <Gift size={15} className="text-brand-600 shrink-0" />
+                <span>Feedback Reward: {form.rewardProgram.name}</span>
+              </div>
+              {form.rewardProgram.description && (
+                <p className="text-[11px] text-ink-600 mt-1 leading-relaxed">
+                  {form.rewardProgram.description}
+                </p>
+              )}
+              <div className="mt-2 pt-2 border-t border-brand-200/60 flex items-start gap-1.5 text-[10px] text-ink-500 leading-normal">
+                <ShieldCheck size={12} className="text-brand-600 shrink-0 mt-0.5" />
+                <span>
+                  {form.rewardProgram.disclosureText ||
+                    "This reward is offered for your honest feedback. All reviews, whether positive, neutral, or critical, are equally eligible."}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ------------------------------------------------------------- */}
@@ -1749,6 +1781,110 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 </div>
               )}
             </div>
+
+            {/* Reward Card / Appreciation Wheel on Thank You Screen */}
+            {submittedReward && submittedReward.mode === "WHEEL" ? (
+              <RewardWheel
+                options={submittedReward.wheelOptions || []}
+                claimToken={submittedReward.claimToken}
+                title={submittedReward.wheelTitle}
+                description={submittedReward.wheelDescription}
+                disclosureText={submittedReward.disclosureText}
+                accentColor={accentColor}
+                onRewardWon={(wonReward) => setSubmittedReward(wonReward)}
+              />
+            ) : submittedReward ? (
+              <div className="rounded-2xl border-2 border-brand-300 bg-gradient-to-br from-brand-50/80 to-white p-5 text-left text-xs space-y-3.5 max-w-md mx-auto shadow-sm">
+                <div className="flex items-center justify-between pb-2 border-b border-brand-200">
+                  <div className="flex items-center gap-2">
+                    <div className="h-7 w-7 rounded-lg bg-brand-500 text-white flex items-center justify-center">
+                      <Gift size={16} />
+                    </div>
+                    <div>
+                      <span className="font-bold text-ink-900 text-xs sm:text-sm">
+                        {submittedReward.programName || "Your Participation Reward"}
+                      </span>
+                      <div className="text-[10px] text-ink-500">Thank you for your honest feedback</div>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 text-emerald-700 px-2.5 py-0.5 text-[10px] font-bold border border-emerald-200 uppercase tracking-wider">
+                    {submittedReward.status || "Claimed"}
+                  </span>
+                </div>
+
+                {submittedReward.description && (
+                  <p className="text-ink-700 text-xs leading-relaxed">
+                    {submittedReward.description}
+                  </p>
+                )}
+
+                {/* Coupon Code Presentation */}
+                {submittedReward.couponCode && (
+                  <div className="rounded-xl border border-dashed border-brand-300 bg-white p-3 space-y-1.5">
+                    <span className="text-[10px] font-semibold text-ink-400 uppercase tracking-wider">
+                      Promo / Coupon Code
+                    </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <code className="text-sm sm:text-base font-mono font-bold text-brand-700 tracking-wider">
+                        {submittedReward.couponCode}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(submittedReward.couponCode);
+                          setCopiedRewardCode(true);
+                          setTimeout(() => setCopiedRewardCode(false), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-100 transition-colors"
+                      >
+                        {copiedRewardCode ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                        <span>{copiedRewardCode ? "Copied!" : "Copy Code"}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reward URL / Digital Gift Link */}
+                {(submittedReward.rewardUrl || submittedReward.digitalGiftUrl) && (
+                  <div className="pt-1">
+                    <a
+                      href={submittedReward.rewardUrl || submittedReward.digitalGiftUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 w-full rounded-xl bg-brand-500 px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-brand-600 transition-colors"
+                    >
+                      <span>Access Your Reward</span>
+                      <ExternalLink size={13} />
+                    </a>
+                  </div>
+                )}
+
+                {/* Manual Review Pending Notice */}
+                {submittedReward.status === "PENDING" && (
+                  <div className="rounded-xl bg-warm-100 p-2.5 text-[11px] text-ink-700 leading-relaxed flex items-start gap-2">
+                    <Info size={14} className="text-ink-500 shrink-0 mt-0.5" />
+                    <span>
+                      Your reward has been queued and will be dispatched by the workspace team following verification.
+                    </span>
+                  </div>
+                )}
+
+                {submittedReward.instructions && (
+                  <div className="text-[11px] text-ink-600 bg-warm-50 p-2 rounded-lg leading-relaxed">
+                    <strong>How to redeem:</strong> {submittedReward.instructions}
+                  </div>
+                )}
+
+                {/* Compliance Disclosure */}
+                <div className="pt-2 border-t border-brand-200/60 flex items-start gap-1.5 text-[10px] text-ink-400 leading-normal">
+                  <ShieldCheck size={12} className="text-brand-600 shrink-0 mt-0.5" />
+                  <span>
+                    {submittedReward.disclosureText ||
+                      "This reward was provided for taking the time to share your review. Praise never alters or conditions rewards on positive feedback."}
+                  </span>
+                </div>
+              </div>
+            ) : null}
 
             {/* Redirect notice if configured */}
             {redirectUrl ? (

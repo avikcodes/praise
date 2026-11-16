@@ -1,4 +1,4 @@
-import { PraiseFieldKey } from "./types";
+import type { PraiseFieldKey } from "./types.ts";
 
 /**
  * Robust RFC 4180 CSV parser supporting:

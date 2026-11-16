@@ -2701,6 +2701,16 @@ function TestimonialsContent() {
                         ({selectedTestimonial.customer.title})
                       </span>
                     )}
+                    {selectedTestimonial.customer?.email && (
+                      <Link
+                        href={`/dashboard/rewards?thankYouCustomer=${encodeURIComponent(selectedTestimonial.customer.name || "Customer")}&email=${encodeURIComponent(selectedTestimonial.customer.email)}`}
+                        className="inline-flex items-center gap-1 rounded bg-brand-50 border border-brand-200 px-2 py-0.5 text-[10px] font-semibold text-brand-700 hover:bg-brand-100 transition-colors ml-1"
+                        title="Send customer appreciation thank-you"
+                      >
+                        <Sparkles size={10} />
+                        <span>Send Thank-You</span>
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

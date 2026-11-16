@@ -150,6 +150,20 @@ export default async function PublicFormPage({ params }: PageProps) {
             color: true,
           },
         },
+        rewardProgram: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            rewardType: true,
+            instructions: true,
+            disclosureText: true,
+            deliveryMethod: true,
+            isActive: true,
+            wheelEnabled: true,
+            wheelConfigJson: true,
+          },
+        },
       },
     });
   } catch (error) {

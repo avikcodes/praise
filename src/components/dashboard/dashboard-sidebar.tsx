@@ -6,6 +6,7 @@ import {
   BarChart3,
   ExternalLink,
   FolderKanban,
+  Gift,
   HardDrive,
   Inbox,
   LayoutDashboard,
@@ -38,6 +39,7 @@ const navigationItems: NavItem[] = [
   { label: "Forms", href: "/dashboard/forms", icon: Inbox },
   { label: "Customers", href: "/dashboard/customers", icon: Users2 },
   { label: "Invitations", href: "/dashboard/invitations", icon: Mail },
+  { label: "Rewards", href: "/dashboard/rewards", icon: Gift },
   { label: "Widgets", href: "/dashboard/widgets", icon: LayoutGrid },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];

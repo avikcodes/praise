@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
-import { prisma } from "@/lib/db/client";
+import { prisma } from "../db/client.ts";
 
 export const SESSION_COOKIE_NAME = "praise_session";
 export const SESSION_DURATION_DAYS = 14;

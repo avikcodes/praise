@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/client";
+import { prisma } from "../db/client.ts";
 
 export type ModerationAction =
   | "SUBMITTED"
@@ -17,7 +17,8 @@ export type ModerationAction =
   | "DUPLICATE_FLAGGED"
   | "DUPLICATE_DISMISSED"
   | "DUPLICATE_MERGED"
-  | "SOURCE_UPDATED";
+  | "SOURCE_UPDATED"
+  | "THANK_YOU_SENT";
 
 export interface LogModerationActivityInput {
   workspaceId: string;
@@ -35,20 +36,23 @@ export interface LogModerationActivityInput {
 /**
  * Persists an immutable moderation or submission event into the activity history ledger.
  */
-export async function logModerationActivity({
-  workspaceId,
-  testimonialId,
-  actorId,
-  actorName,
-  actorEmail,
-  action,
-  previousStatus,
-  newStatus,
-  details,
-  metadata,
-}: LogModerationActivityInput) {
+export async function logModerationActivity(
+  {
+    workspaceId,
+    testimonialId,
+    actorId,
+    actorName,
+    actorEmail,
+    action,
+    previousStatus,
+    newStatus,
+    details,
+    metadata,
+  }: LogModerationActivityInput,
+  dbClient: any = prisma
+) {
   try {
-    return await prisma.moderationActivity.create({
+    return await dbClient.moderationActivity.create({
       data: {
         workspaceId,
         testimonialId,

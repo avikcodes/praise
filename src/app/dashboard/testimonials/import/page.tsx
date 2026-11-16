@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -9,8 +9,11 @@ import {
   Building2,
   Check,
   CheckCircle2,
+  ExternalLink,
   FileCode,
   FileSpreadsheet,
+  Globe,
+  History,
   Loader2,
   Mail,
   MessageSquareQuote,
@@ -24,6 +27,8 @@ import {
 import { PageHeader } from "@/components/dashboard/page-header";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
+import { ExternalPlatformImporter } from "@/components/import/external-platform-importer";
+import { PlatformConnectionsView } from "@/components/import/platform-connections-view";
 import {
   autoGuessMappings,
   generateSampleCsv,
@@ -37,13 +42,44 @@ import {
   PRAISE_IMPORT_FIELDS,
   PraiseFieldKey,
 } from "@/lib/import/types";
+import { Plug } from "lucide-react";
 
 type Step = "upload" | "map" | "preview" | "results";
+type MainTab = "connections" | "external" | "custom" | "history";
 
 export default function ImportTestimonialsPage() {
   const toast = useToast();
   const { activeWorkspace, projects } = useWorkspace();
   const workspaceId = activeWorkspace?.id;
+
+  // Active Tab & History state
+  const [activeTab, setActiveTab] = useState<MainTab>("connections");
+  const [historyBatches, setHistoryBatches] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  const loadHistory = async () => {
+    if (!workspaceId) return;
+    setIsLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/testimonials/import/history`);
+      const data = await res.json();
+      if (res.ok) {
+        setHistoryBatches(data.batches || []);
+        setHistoryLoaded(true);
+      }
+    } catch (err) {
+      console.error("Failed to load history:", err);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "history" && !historyLoaded && workspaceId) {
+      loadHistory();
+    }
+  }, [activeTab, historyLoaded, workspaceId]);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<Step>("upload");
@@ -335,7 +371,7 @@ export default function ImportTestimonialsPage() {
       {/* Top Header */}
       <PageHeader
         title="Import Testimonials"
-        description="Bulk import historical customer testimonials and reviews from CSV or JSON files."
+        description="Bulk import historical customer testimonials and reviews from external platforms, social networks, or custom CSV/JSON files."
         actions={
           <div className="flex items-center gap-2">
             <Link
@@ -349,8 +385,103 @@ export default function ImportTestimonialsPage() {
         }
       />
 
-      {/* Step Indicator */}
-      <div className="rounded-2xl border border-line bg-white p-4 shadow-xs">
+      {/* Main Tabs */}
+      <div className="flex border-b border-line gap-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab("connections")}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition-colors whitespace-nowrap ${
+            activeTab === "connections"
+              ? "border-brand-500 text-brand-600"
+              : "border-transparent text-ink-500 hover:border-warm-300 hover:text-ink-800"
+          }`}
+        >
+          <Plug size={15} />
+          <span>Connected Accounts &amp; Live Sync</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("external")}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition-colors whitespace-nowrap ${
+            activeTab === "external"
+              ? "border-brand-500 text-brand-600"
+              : "border-transparent text-ink-500 hover:border-warm-300 hover:text-ink-800"
+          }`}
+        >
+          <Globe size={15} />
+          <span>One-Time Platform Import</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("custom")}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition-colors whitespace-nowrap ${
+            activeTab === "custom"
+              ? "border-brand-500 text-brand-600"
+              : "border-transparent text-ink-500 hover:border-warm-300 hover:text-ink-800"
+          }`}
+        >
+          <FileSpreadsheet size={15} />
+          <span>Custom CSV / JSON File</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab("history");
+            if (!historyLoaded) loadHistory();
+          }}
+          className={`inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-bold transition-colors whitespace-nowrap ${
+            activeTab === "history"
+              ? "border-brand-500 text-brand-600"
+              : "border-transparent text-ink-500 hover:border-warm-300 hover:text-ink-800"
+          }`}
+        >
+          <History size={15} />
+          <span>Import Batch History</span>
+        </button>
+      </div>
+
+      {/* TAB 0: CONNECTED ACCOUNTS & LIVE SYNC */}
+      {activeTab === "connections" && (
+        <div className="rounded-2xl border border-line bg-white p-6 shadow-xs">
+          {workspaceId ? (
+            <PlatformConnectionsView
+              workspaceId={workspaceId}
+              projects={projects}
+              onNavigateToManual={() => setActiveTab("external")}
+            />
+          ) : (
+            <div className="text-center py-12 text-ink-400 text-xs">
+              Please select a workspace to view connected review accounts.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 1: ONE-TIME PLATFORM IMPORT */}
+      {activeTab === "external" && (
+        <div className="rounded-2xl border border-line bg-white p-6 shadow-xs">
+          {workspaceId ? (
+            <ExternalPlatformImporter
+              workspaceId={workspaceId}
+              projects={projects}
+              onSuccess={loadHistory}
+            />
+          ) : (
+            <div className="text-center py-12 text-ink-400 text-xs">
+              Please select a workspace to start importing.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: CUSTOM CSV / JSON FILE */}
+      {activeTab === "custom" && (
+        <div className="space-y-6">
+          {/* Step Indicator */}
+          <div className="rounded-2xl border border-line bg-white p-4 shadow-xs">
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           {[
             { id: "upload", label: "1. Upload File" },
@@ -1076,6 +1207,123 @@ export default function ImportTestimonialsPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+        </div>
+      )}
+
+      {/* TAB 3: IMPORT BATCH HISTORY */}
+      {activeTab === "history" && (
+        <div className="rounded-2xl border border-line bg-white p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-line">
+            <div>
+              <h3 className="text-sm font-semibold text-ink-900">Workspace Import History</h3>
+              <p className="text-xs text-ink-500">
+                Log of past imports, platform sources, duplicate detection counts, and error reports.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadHistory}
+              disabled={isLoadingHistory}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 hover:bg-warm-100 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={isLoadingHistory ? "animate-spin" : ""} />
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          {isLoadingHistory && historyBatches.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-xs text-ink-400 gap-2">
+              <Loader2 size={16} className="animate-spin text-brand-500" />
+              <span>Loading import logs...</span>
+            </div>
+          ) : historyBatches.length === 0 ? (
+            <div className="text-center py-12 text-xs text-ink-400">
+              No import batches recorded yet for this workspace.
+            </div>
+          ) : (
+            <div className="divide-y divide-line border border-line rounded-xl overflow-hidden">
+              {historyBatches.map((batch) => {
+                let parsedErrors: any[] = [];
+                if (batch.errorsJson) {
+                  try {
+                    parsedErrors = JSON.parse(batch.errorsJson);
+                  } catch {}
+                }
+
+                return (
+                  <div key={batch.id} className="p-4 space-y-3 bg-white hover:bg-warm-50/30 transition-colors">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-ink-900">
+                            {batch.sourcePlatform || "UNKNOWN"}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              batch.status === "COMPLETED"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : batch.status === "PARTIAL"
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-rose-50 text-rose-700 border border-rose-200"
+                            }`}
+                          >
+                            {batch.status}
+                          </span>
+                          <span className="text-[10px] text-ink-400 font-mono">
+                            ID: {batch.id}
+                          </span>
+                        </div>
+                        <p className="text-xs text-ink-600">{batch.sourceLabel}</p>
+                      </div>
+
+                      <div className="text-right text-[11px] text-ink-400 shrink-0">
+                        <div>{new Date(batch.createdAt).toLocaleString()}</div>
+                        {batch.importedByName && (
+                          <div className="text-ink-500 font-medium">By {batch.importedByName}</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs font-medium text-ink-600 bg-warm-50/60 p-2.5 rounded-lg border border-line/60">
+                      <div>
+                        Total: <span className="text-ink-900 font-bold">{batch.totalRecords}</span>
+                      </div>
+                      <div>
+                        Imported:{" "}
+                        <span className="text-emerald-700 font-bold">{batch.importedCount}</span>
+                      </div>
+                      <div>
+                        Duplicates:{" "}
+                        <span className="text-amber-700 font-bold">{batch.duplicatesCount}</span>
+                      </div>
+                      <div>
+                        Failed:{" "}
+                        <span className="text-rose-700 font-bold">{batch.failedCount}</span>
+                      </div>
+                    </div>
+
+                    {parsedErrors.length > 0 && (
+                      <div className="text-xs bg-rose-50/50 border border-rose-200 p-2.5 rounded-lg space-y-1">
+                        <div className="font-semibold text-rose-800 text-[11px] flex items-center gap-1">
+                          <AlertTriangle size={12} />
+                          <span>Error Reports ({parsedErrors.length})</span>
+                        </div>
+                        <div className="max-h-24 overflow-y-auto space-y-0.5 text-[10px] text-rose-700 font-mono">
+                          {parsedErrors.map((err: any, i: number) => (
+                            <div key={i}>
+                              #{err.index != null ? err.index + 1 : i + 1}: {err.error || JSON.stringify(err)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -35,6 +35,7 @@ import {
   Send,
   SendHorizontal,
   ShieldAlert,
+  Smartphone,
   Sparkles,
   Trash2,
   UserCheck,
@@ -48,6 +49,7 @@ import { ConfirmDialog } from "@/components/dashboard/confirm-dialog";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
 import { interpolateEmailTemplate, buildHtmlEmail } from "@/lib/email/templating";
+import { SmsInvitationsView } from "@/components/dashboard/sms-invitations-view";
 import { cn } from "@/lib/utils";
 
 type CampaignStep = {
@@ -219,6 +221,8 @@ export default function InvitationsPage() {
   const { activeWorkspace } = useWorkspace();
   const workspaceId = activeWorkspace?.id;
   const toast = useToast();
+
+  const [channelTab, setChannelTab] = useState<"email" | "sms">("email");
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [stats, setStats] = useState({
@@ -928,29 +932,61 @@ export default function InvitationsPage() {
   return (
     <div className="space-y-6 pb-16">
       <PageHeader
-        title="Email Campaigns & Sequences"
-        description="Schedule testimonial requests, build automated follow-up sequences, and stop reminders once customers submit feedback."
+        title="Customer Invitations & Sequences"
+        description="Invite customers to share reviews via Email or SMS with personalized links and automated delivery."
         actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={fetchCampaigns}
-              disabled={isLoading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
-            >
-              <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
-              <span>Refresh</span>
-            </button>
-            <button
-              onClick={handleOpenComposer}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-600 transition-colors"
-            >
-              <Plus size={14} />
-              <span>Create Campaign</span>
-            </button>
-          </div>
+          channelTab === "email" ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchCampaigns}
+                disabled={isLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
+              >
+                <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
+                <span>Refresh</span>
+              </button>
+              <button
+                onClick={handleOpenComposer}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-600 transition-colors"
+              >
+                <Plus size={14} />
+                <span>Create Campaign</span>
+              </button>
+            </div>
+          ) : null
         }
       />
 
+      {/* Channel Switcher */}
+      <div className="flex items-center gap-2 border-b border-line pb-3">
+        <button
+          onClick={() => setChannelTab("email")}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors ${
+            channelTab === "email"
+              ? "bg-brand-500 text-white shadow-xs"
+              : "bg-white text-ink-700 border border-line hover:bg-warm-100"
+          }`}
+        >
+          <Mail size={14} />
+          <span>Email Campaigns & Sequences</span>
+        </button>
+        <button
+          onClick={() => setChannelTab("sms")}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-colors ${
+            channelTab === "sms"
+              ? "bg-brand-500 text-white shadow-xs"
+              : "bg-white text-ink-700 border border-line hover:bg-warm-100"
+          }`}
+        >
+          <Smartphone size={14} />
+          <span>SMS Invitations & Gateway</span>
+        </button>
+      </div>
+
+      {channelTab === "sms" ? (
+        <SmsInvitationsView />
+      ) : (
+        <>
       {/* 1. Aggregate Analytics Bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
         <div className="rounded-xl border border-line bg-white p-3.5 shadow-2xs">
@@ -2461,6 +2497,8 @@ export default function InvitationsPage() {
         confirmLabel="Delete Campaign"
         isDestructive
       />
+        </>
+      )}
     </div>
   );
 }

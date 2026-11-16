@@ -21,6 +21,7 @@ import {
 } from "@/lib/forms/flow-engine";
 import { triggerMediaTranscription } from "@/lib/transcription/service";
 import { logModerationActivity } from "@/lib/moderation/activity";
+import { processRewardForSubmission } from "@/lib/rewards/service";
 
 // Basic email regex validator
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -102,6 +103,10 @@ export async function POST(request: Request) {
         include: {
           fields: {
             orderBy: { orderIndex: "asc" },
+          },
+          rewardProgram: true,
+          workspace: {
+            select: { id: true, name: true },
           },
         },
       });
@@ -527,8 +532,9 @@ export async function POST(request: Request) {
 
       // 7d. Link invitation recipient if inviteToken is present
       if (inviteToken && typeof inviteToken === "string") {
+        const cleanToken = inviteToken.trim();
         const recipient = await tx.invitationRecipient.findUnique({
-          where: { token: inviteToken.trim() },
+          where: { token: cleanToken },
         });
 
         if (recipient && recipient.workspaceId === form.workspaceId) {
@@ -547,6 +553,29 @@ export async function POST(request: Request) {
               submittedCount: { increment: 1 },
             },
           });
+        } else {
+          // Check if it belongs to an SMS invitation
+          const smsRecipient = await tx.smsRecipient.findUnique({
+            where: { token: cleanToken },
+          });
+
+          if (smsRecipient && smsRecipient.workspaceId === form.workspaceId) {
+            await tx.smsRecipient.update({
+              where: { id: smsRecipient.id },
+              data: {
+                status: "SUBMITTED",
+                submittedAt: new Date(),
+                testimonialId: testimonial.id,
+              },
+            });
+
+            await tx.smsCampaign.update({
+              where: { id: smsRecipient.campaignId },
+              data: {
+                submittedCount: { increment: 1 },
+              },
+            });
+          }
         }
       }
 
@@ -598,6 +627,24 @@ export async function POST(request: Request) {
       });
     }
 
+    // 10. Customer Rewards Fulfillment (Non-discriminatory, transparent incentive)
+    let rewardInfo: any = null;
+    try {
+      rewardInfo = await processRewardForSubmission({
+        workspaceId: form.workspaceId,
+        formId: form.id,
+        testimonialId: savedTestimonial.id,
+        customerId: savedTestimonial.customerId,
+        recipientName: customerName?.trim() || "Respondent",
+        recipientEmail: hasProvidedEmail ? cleanEmail : null,
+        recipientPhone: body.phoneNumber || null,
+        formTitle: form.title,
+        workspaceName: form.workspace?.name,
+      });
+    } catch (rewardErr) {
+      console.error("Reward processing non-blocking error:", rewardErr);
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -605,6 +652,7 @@ export async function POST(request: Request) {
         testimonialId: savedTestimonial.id,
         redirectUrl: form.redirectUrl || null,
         status: "PENDING",
+        reward: rewardInfo,
       },
       { status: 201 },
     );

@@ -188,6 +188,16 @@ model Workspace {
   invitationTemplates InvitationTemplate[]
   emailSuppressions EmailSuppression[]
   emailCampaignActivities EmailCampaignActivity[]
+  smsCampaigns SmsCampaign[]
+  smsRecipients SmsRecipient[]
+  smsTemplates SmsTemplate[]
+  smsSuppressions SmsSuppression[]
+  smsProviderConfig SmsProviderConfig?
+  rewardPrograms RewardProgram[]
+  rewardClaims RewardClaim[]
+  thankYous CustomerThankYou[]
+  importBatches ImportBatch[]
+  platformConnections PlatformConnection[]
 
   @@index([slug])
   @@map("workspaces")
@@ -271,6 +281,7 @@ model Customer {
   avatarUrl            String?
   socialHandle         String?
   website              String?
+  phoneNumber          String?
   stage                String              @default("NEW")
   customAttributesJson String?
   createdAt            DateTime            @default(now())
@@ -282,6 +293,9 @@ model Customer {
   notes                CustomerNote[]
   activities           CustomerActivity[]
   invitations          InvitationRecipient[]
+  smsInvitations       SmsRecipient[]
+  rewardClaims         RewardClaim[]
+  thankYous            CustomerThankYou[]
 
   @@unique([workspaceId, email])
   @@index([workspaceId])
@@ -349,19 +363,27 @@ model CollectionForm {
   videoInstructions      String?
   recordingQuestionsJson String?
 
+  // Customer Rewards Configuration
+  rewardEnabled           Boolean       @default(false)
+  rewardProgramId         String?
+
   isPublished             Boolean       @default(true)
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
   workspace               Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project                 Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  rewardProgram           RewardProgram? @relation(fields: [rewardProgramId], references: [id], onDelete: SetNull)
   fields                  FormField[]
   testimonials            Testimonial[]
   campaigns               EmailCampaign[]
+  smsCampaigns            SmsCampaign[]
+  rewardClaims            RewardClaim[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
   @@index([projectId])
+  @@index([rewardProgramId])
   @@map("collection_forms")
 }
 
@@ -450,6 +472,9 @@ model Testimonial {
   notes          TestimonialNote[]
   moderationActivities ModerationActivity[]
   invitationRecipient InvitationRecipient?
+  smsRecipient   SmsRecipient?
+  rewardClaim    RewardClaim?
+  thankYous      CustomerThankYou[]
 
   @@index([workspaceId])
   @@index([workspaceId, status])
@@ -1061,6 +1086,303 @@ model EmailSuppression {
   @@index([workspaceId])
   @@map("email_suppressions")
 }
+
+// -----------------------------------------------------------------------------
+// 12. SMS Testimonial Invitations: Campaigns, Recipient Links, Templates, Config
+// -----------------------------------------------------------------------------
+
+model SmsCampaign {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  name               String
+  status             String             @default("DRAFT") // DRAFT, SENDING, COMPLETED, CANCELLED
+  formId             String
+  templateId         String?
+  messageBody        String
+  senderId           String?
+  totalRecipients    Int                @default(0)
+  sentCount          Int                @default(0)
+  deliveredCount     Int                @default(0)
+  clickedCount       Int                @default(0)
+  submittedCount     Int                @default(0)
+  failedCount        Int                @default(0)
+  optedOutCount      Int                @default(0)
+  confirmedAt        DateTime?
+  confirmedBy        String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  form               CollectionForm     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  template           SmsTemplate?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  recipients         SmsRecipient[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([formId])
+  @@map("sms_campaigns")
+}
+
+model SmsRecipient {
+  id                 String             @id @default(cuid())
+  campaignId         String
+  workspaceId        String
+  customerId         String?
+  phoneNumber        String             // Normalized E.164
+  name               String
+  token              String             @unique // Unique secure token for personal submission & opt-out
+  customFieldsJson   String?
+  messageBody        String?
+  segmentCount       Int                @default(1)
+  status             String             @default("PENDING") // PENDING, SENT, DELIVERED, CLICKED, SUBMITTED, FAILED, OPTED_OUT
+  providerMessageId  String?
+  errorMessage       String?
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  clickedAt          DateTime?
+  submittedAt        DateTime?
+  testimonialId      String?            @unique
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  campaign           SmsCampaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer           Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  testimonial        Testimonial?       @relation(fields: [testimonialId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId])
+  @@index([workspaceId])
+  @@index([phoneNumber])
+  @@index([status])
+  @@map("sms_recipients")
+}
+
+model SmsTemplate {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  name               String
+  category           String             @default("GENERAL") // GENERAL, REVIEW, NPS, PROMOTER, FOLLOW_UP
+  messageBody        String
+  isSystem           Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaigns          SmsCampaign[]
+
+  @@index([workspaceId])
+  @@map("sms_templates")
+}
+
+model SmsSuppression {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  phoneNumber        String             // E.164 normalized
+  reason             String             @default("OPT_OUT") // OPT_OUT, STOP_REPLY, INVALID_NUMBER, MANUAL
+  details            String?
+  createdAt          DateTime           @default(now())
+
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, phoneNumber])
+  @@index([workspaceId])
+  @@map("sms_suppressions")
+}
+
+model SmsProviderConfig {
+  id                 String             @id @default(cuid())
+  workspaceId        String             @unique
+  provider           String             @default("MOCK") // MOCK, TWILIO, WEBHOOK
+  accountSid         String?
+  authToken          String?
+  fromNumber         String?
+  webhookUrl         String?
+  webhookAuthHeader  String?
+  isEnabled          Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("sms_provider_configs")
+}
+
+// -----------------------------------------------------------------------------
+// 14. Customer Rewards & Testimonial Incentives
+// -----------------------------------------------------------------------------
+
+model RewardProgram {
+  id                 String           @id @default(cuid())
+  workspaceId        String
+  name               String
+  description        String?
+  rewardType         String           @default("COUPON_CODE") // COUPON_CODE, REWARD_URL, DIGITAL_GIFT, MANUAL, EXTERNAL_PROVIDER
+  couponCode         String?
+  rewardUrl          String?
+  digitalGiftUrl     String?
+  instructions       String?
+  disclosureText     String?
+  deliveryMethod     String           @default("INSTANT_ON_SUBMISSION") // INSTANT_ON_SUBMISSION, MANUAL_REVIEW, EXTERNAL_DISPATCH
+  providerType       String           @default("BUILT_IN") // BUILT_IN, MANUAL, GENERIC_WEBHOOK
+  providerConfigJson String?
+  isActive           Boolean          @default(true)
+  maxRewardsTotal    Int?
+  claimsCount        Int              @default(0)
+  wheelEnabled       Boolean          @default(false)
+  wheelConfigJson    String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  forms              CollectionForm[]
+  claims             RewardClaim[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, isActive])
+  @@map("reward_programs")
+}
+
+model RewardClaim {
+  id                 String          @id @default(cuid())
+  workspaceId        String
+  rewardProgramId    String
+  testimonialId      String?         @unique
+  customerId         String?
+  formId             String?
+  recipientName      String?
+  recipientEmail     String?
+  recipientPhone     String?
+  rewardType         String
+  rewardCode         String?
+  rewardUrl          String?
+  claimToken         String?         @unique
+  isWheelSpin        Boolean         @default(false)
+  selectedOptionId   String?
+  selectedOptionLabel String?
+  status             String          @default("PENDING") // PENDING, DELIVERED, CLAIMED, REDEEMED, FAILED, REVOKED
+  deliveryMethod     String          @default("INSTANT") // INSTANT, MANUAL, PROVIDER
+  deliveredAt        DateTime?
+  redeemedAt         DateTime?
+  deliveredBy        String?
+  providerReference  String?
+  errorMessage       String?
+  metadataJson       String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  workspace          Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rewardProgram      RewardProgram   @relation(fields: [rewardProgramId], references: [id], onDelete: Cascade)
+  testimonial        Testimonial?    @relation(fields: [testimonialId], references: [id], onDelete: SetNull)
+  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  form               CollectionForm? @relation(fields: [formId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@index([rewardProgramId])
+  @@index([customerId])
+  @@index([formId])
+  @@map("reward_claims")
+}
+
+// -----------------------------------------------------------------------------
+// 15. Customer Appreciation & Personal Thank-Yous
+// -----------------------------------------------------------------------------
+
+model CustomerThankYou {
+  id                 String          @id @default(cuid())
+  workspaceId        String
+  testimonialId      String?
+  customerId         String?
+  recipientName      String?
+  recipientEmail     String?
+  subject            String
+  message            String
+  videoUrl           String?
+  videoAssetId       String?
+  channel            String          @default("EMAIL") // EMAIL, MANUAL_NOTE, VIDEO_MESSAGE
+  status             String          @default("SENT")  // SENT, SCHEDULED, DRAFT, FAILED
+  sentAt             DateTime        @default(now())
+  sentByUserId       String?
+  sentByName         String?
+  metadataJson       String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  workspace          Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testimonial        Testimonial?    @relation(fields: [testimonialId], references: [id], onDelete: SetNull)
+  customer           Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([testimonialId])
+  @@index([customerId])
+  @@index([workspaceId, channel])
+  @@map("customer_thank_yous")
+}
+
+// -----------------------------------------------------------------------------
+// 16. External Review & Social Platform Import Batches
+// -----------------------------------------------------------------------------
+
+model ImportBatch {
+  id               String       @id @default(cuid())
+  workspaceId      String
+  sourcePlatform   String       // GOOGLE, FACEBOOK, X, LINKEDIN, REDDIT, PRODUCT_HUNT, G2, CAPTERRA, TRUSTPILOT, CSV, JSON, MANUAL
+  sourceLabel      String
+  status           String       @default("COMPLETED") // PENDING, PROCESSING, COMPLETED, FAILED, PARTIAL
+  totalRecords     Int          @default(0)
+  importedCount    Int          @default(0)
+  duplicatesCount  Int          @default(0)
+  failedCount      Int          @default(0)
+  errorsJson       String?
+  configJson       String?
+  importedByUserId String?
+  importedByName   String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  workspace        Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, sourcePlatform])
+  @@index([workspaceId, createdAt])
+  @@map("import_batches")
+}
+
+// -----------------------------------------------------------------------------
+// 17. External Review Platform Connections & Automated Sync
+// -----------------------------------------------------------------------------
+
+model PlatformConnection {
+  id                   String       @id @default(cuid())
+  workspaceId          String
+  platform             String       // GOOGLE, TRUSTPILOT, PRODUCT_HUNT, G2, FACEBOOK
+  accountIdentifier    String       // e.g. Place ID, Business Unit ID, G2 Product Slug, Page ID
+  accountName          String?      // e.g. "Acme Corp (Austin, TX)", "Acme SaaS"
+  authType             String       // OAUTH, API_KEY, TOKEN_PAIR
+  status               String       @default("CONNECTED") // CONNECTED, ERROR, EXPIRED, DISCONNECTED, UNSUPPORTED
+  encryptedCredentials String       // Encrypted JSON containing access tokens / API keys
+  scopes               String?      // Granted OAuth scopes if applicable
+  expiresAt            DateTime?    // Token expiry timestamp
+  lastSyncAt           DateTime?    // Timestamp of last successful review sync
+  lastError            String?      // Last sync error message or permission alert
+  metadataJson         String?      // Platform account metadata (avatar, address, star rating, etc.)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  workspace            Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, platform, accountIdentifier])
+  @@index([workspaceId])
+  @@index([workspaceId, platform])
+  @@map("platform_connections")
+}
+
+
+
+
 
 
 
