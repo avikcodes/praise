@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 import { requireAuth, AuthError } from "@/lib/auth/guards";
 
 export async function GET() {
   try {
+    await connection();
     const user = await requireAuth();
 
     try {
@@ -29,7 +32,8 @@ export async function GET() {
           role: m.role,
         })),
       });
-    } catch {
+    } catch (membershipError) {
+      unstable_rethrow(membershipError);
       return NextResponse.json({
         authenticated: true,
         user,
@@ -37,6 +41,7 @@ export async function GET() {
       });
     }
   } catch (error: unknown) {
+    unstable_rethrow(error);
     if (error instanceof AuthError) {
       return NextResponse.json(
         { authenticated: false, error: error.message },

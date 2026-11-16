@@ -1,4 +1,6 @@
 import { cookies } from "next/headers";
+import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { randomBytes } from "crypto";
 import { cache } from "react";
 import { prisma } from "../db/client.ts";
@@ -70,6 +72,8 @@ export async function destroySession(): Promise<void> {
  * Uses React cache() to deduplicate lookups across the same request render tree.
  */
 export const getSessionUser = cache(async () => {
+  await connection();
+
   // 1. Check Neon Auth session
   let neonSessionUser = null;
   try {
@@ -77,7 +81,8 @@ export const getSessionUser = cache(async () => {
     if (sessionData?.user) {
       neonSessionUser = sessionData.user;
     }
-  } catch {
+  } catch (authError) {
+    unstable_rethrow(authError);
     // If Neon Auth session check fails or is unconfigured, proceed to legacy check
   }
 
@@ -92,14 +97,21 @@ export const getSessionUser = cache(async () => {
         createdAt: user.createdAt,
       };
     } catch (syncError) {
+      unstable_rethrow(syncError);
       console.error("[auth] Critical error synchronizing authenticated Neon user:", syncError);
       throw syncError;
     }
   }
 
   // 2. Legacy session cookie fallback
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  let token: string | undefined;
+  try {
+    const cookieStore = await cookies();
+    token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  } catch (cookieError) {
+    unstable_rethrow(cookieError);
+    return null;
+  }
 
   if (!token) {
     return null;
@@ -132,7 +144,8 @@ export const getSessionUser = cache(async () => {
     }
 
     return session.user;
-  } catch {
+  } catch (dbError) {
+    unstable_rethrow(dbError);
     return null;
   }
 });

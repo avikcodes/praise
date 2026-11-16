@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(request: Request) {
   try {
+    await connection();
     const { searchParams } = new URL(request.url);
     const token = searchParams.get("token");
 
@@ -163,6 +166,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: any) {
+    unstable_rethrow(error);
     console.error("Failed to resolve invitation:", error);
     return NextResponse.json(
       { error: error.message || "Failed to resolve invitation" },

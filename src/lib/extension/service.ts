@@ -1,5 +1,6 @@
 import { prisma } from "../db/client.ts";
 import { authenticateApiKey } from "../api/keys.ts";
+import { unstable_rethrow } from "next/navigation";
 import { TestimonialStatus } from "@prisma/client";
 import { logModerationActivity } from "../moderation/activity.ts";
 import { formatCustomerMeta, INTERNAL_EMAIL_SUFFIX } from "../customers/utils.ts";
@@ -73,7 +74,8 @@ export async function authenticateExtensionRequest(
         };
       }
     }
-  } catch {
+  } catch (error) {
+    unstable_rethrow(error);
     // Session check error or bailing out during prerender
   }
 

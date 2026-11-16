@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { authenticateExtensionRequest } from "@/lib/extension/service";
 import { prisma } from "@/lib/db/client";
 
 export async function GET(request: NextRequest) {
   try {
+    await connection();
     const auth = await authenticateExtensionRequest(request);
     if (!auth) {
       return NextResponse.json(
@@ -35,6 +38,7 @@ export async function GET(request: NextRequest) {
       authenticatedAs: auth.userName,
     });
   } catch (error: any) {
+    unstable_rethrow(error);
     console.error("Extension verify error:", error);
     return NextResponse.json(
       { error: error.message || "Failed to verify extension connection." },

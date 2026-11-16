@@ -60,6 +60,7 @@
   "allowScripts": {
     "@prisma/client@6.4.1": true,
     "@prisma/engines@6.4.1": true,
+    "esbuild@0.28.2": true,
     "prisma@6.4.1": true
   }
 }
