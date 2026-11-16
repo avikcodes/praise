@@ -41,6 +41,6 @@ export interface PlatformConnector {
    */
   fetchReviews(
     credentials: Record<string, string>,
-    options?: { limit?: number; since?: Date }
+    options?: { limit?: number; since?: Date; cursor?: string }
   ): Promise<NormalizedImportItem[]>;
 }

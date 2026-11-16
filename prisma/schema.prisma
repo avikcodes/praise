@@ -198,6 +198,8 @@ model Workspace {
   thankYous CustomerThankYou[]
   importBatches ImportBatch[]
   platformConnections PlatformConnection[]
+  platformSyncLogs PlatformSyncLog[]
+  wallsOfLove WallOfLove[]
 
   @@index([slug])
   @@map("workspaces")
@@ -260,6 +262,7 @@ model Project {
   forms        CollectionForm[]
   testimonials Testimonial[]
   widgets      Widget[]
+  wallsOfLove  WallOfLove[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1356,29 +1359,118 @@ model ImportBatch {
 // -----------------------------------------------------------------------------
 
 model PlatformConnection {
-  id                   String       @id @default(cuid())
+  id                   String            @id @default(cuid())
   workspaceId          String
-  platform             String       // GOOGLE, TRUSTPILOT, PRODUCT_HUNT, G2, FACEBOOK
-  accountIdentifier    String       // e.g. Place ID, Business Unit ID, G2 Product Slug, Page ID
-  accountName          String?      // e.g. "Acme Corp (Austin, TX)", "Acme SaaS"
-  authType             String       // OAUTH, API_KEY, TOKEN_PAIR
-  status               String       @default("CONNECTED") // CONNECTED, ERROR, EXPIRED, DISCONNECTED, UNSUPPORTED
-  encryptedCredentials String       // Encrypted JSON containing access tokens / API keys
-  scopes               String?      // Granted OAuth scopes if applicable
-  expiresAt            DateTime?    // Token expiry timestamp
-  lastSyncAt           DateTime?    // Timestamp of last successful review sync
-  lastError            String?      // Last sync error message or permission alert
-  metadataJson         String?      // Platform account metadata (avatar, address, star rating, etc.)
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  platform             String            // GOOGLE, TRUSTPILOT, PRODUCT_HUNT, G2, FACEBOOK
+  accountIdentifier    String            // e.g. Place ID, Business Unit ID, G2 Product Slug, Page ID
+  accountName          String?           // e.g. "Acme Corp (Austin, TX)", "Acme SaaS"
+  authType             String            // OAUTH, API_KEY, TOKEN_PAIR
+  status               String            @default("CONNECTED") // CONNECTED, ERROR, EXPIRED, DISCONNECTED, UNSUPPORTED
+  encryptedCredentials String            // Encrypted JSON containing access tokens / API keys
+  scopes               String?           // Granted OAuth scopes if applicable
+  expiresAt            DateTime?         // Token expiry timestamp
+  lastSyncAt           DateTime?         // Timestamp of last sync attempt
+  lastSuccessfulSyncAt DateTime?         // Timestamp of last successful review sync
+  nextSyncAt           DateTime?         // Next scheduled sync execution
+  syncEnabled          Boolean           @default(false)
+  syncFrequency        String            @default("DAILY") // HOURLY, EVERY_6_HOURS, EVERY_12_HOURS, DAILY, WEEKLY
+  lastSyncStatus       String?           // SUCCESS, FAILED, RUNNING, PARTIAL
+  lastSeenTimestamp    DateTime?         // Highest review timestamp seen for incremental sync
+  lastSeenCursor       String?           // Provider cursor for incremental sync
+  retryCount           Int               @default(0)
+  maxRetries           Int               @default(3)
+  targetProjectId      String?           // Default project for imported testimonials
+  lastError            String?           // Last sync error message or permission alert
+  metadataJson         String?           // Platform account metadata (avatar, address, star rating, etc.)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
-  workspace            Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  syncLogs             PlatformSyncLog[]
 
   @@unique([workspaceId, platform, accountIdentifier])
   @@index([workspaceId])
   @@index([workspaceId, platform])
+  @@index([syncEnabled, nextSyncAt])
   @@map("platform_connections")
 }
+
+model PlatformSyncLog {
+  id                String             @id @default(cuid())
+  workspaceId       String
+  connectionId      String
+  platform          String
+  status            String             // SUCCESS, FAILED, RUNNING, PARTIAL
+  triggerType       String             @default("SCHEDULED") // SCHEDULED, MANUAL, RETRY
+  itemsFetched      Int                @default(0)
+  itemsImported     Int                @default(0)
+  duplicatesSkipped Int                @default(0)
+  errorMessage      String?
+  cursorBefore      String?
+  cursorAfter       String?
+  durationMs        Int?
+  startedAt         DateTime           @default(now())
+  completedAt       DateTime?
+
+  connection        PlatformConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, connectionId])
+  @@index([connectionId, startedAt])
+  @@map("platform_sync_logs")
+}
+
+// -----------------------------------------------------------------------------
+// 18. Multiple Walls of Love Public Publishing
+// -----------------------------------------------------------------------------
+
+model WallOfLove {
+  id                     String      @id @default(cuid())
+  workspaceId            String
+  projectId              String?
+  name                   String      // Internal name, e.g. "Enterprise Wall"
+  slug                   String      // Public URL slug, e.g. "enterprise"
+  title                  String?     // Public page headline
+  description            String?     // Public subheadline
+  theme                  String      @default("WARM") // WARM, LIGHT, DARK, MIDNIGHT, EMERALD, SUNSET, MINIMAL
+  layout                 String      @default("MASONRY") // MASONRY, GRID, CAROUSEL, LIST
+  ordering               String      @default("FEATURED_FIRST") // FEATURED_FIRST, NEWEST, HIGHEST_RATED, RANDOM, OLDEST
+  isPublished            Boolean     @default(true) // Publish and unpublish
+  tagFilter              String?     // JSON array of tags to filter
+  selectedTestimonialIds String?     // JSON array of specific testimonial IDs, or empty for all matching
+  minRating              Int         @default(0)
+  primaryColor           String?     @default("#7049D8")
+  customLogoUrl          String?
+  ctaEnabled             Boolean     @default(true)
+  ctaLabel               String?     @default("Share Your Praise")
+  ctaUrl                 String?
+  ctaSecondaryEnabled    Boolean     @default(false)
+  ctaSecondaryLabel      String?
+  ctaSecondaryUrl        String?
+  showRatings            Boolean     @default(true)
+  showCompany            Boolean     @default(true)
+  showAvatar             Boolean     @default(true)
+  showDate               Boolean     @default(true)
+  showTags               Boolean     @default(true)
+  showSource             Boolean     @default(true)
+  showFeaturedBadge      Boolean     @default(true)
+  allowVideoPlayback     Boolean     @default(true)
+  showStats              Boolean     @default(true)
+  customCss              String?
+  viewsCount             Int         @default(0)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  workspace              Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([slug])
+  @@map("walls_of_love")
+}
+
 
 
 

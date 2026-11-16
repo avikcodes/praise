@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { SITE_NAME, SITE_URL } from "../site.ts";
 
 /**
  * Resolves any relative or local media path to a fully qualified absolute URL for metadata.

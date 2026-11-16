@@ -39,8 +39,8 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
   const { config, project, workspace, testimonials } = data;
 
   // Theme state: defaults to configured theme, but user can toggle interactively
-  const [activeTheme, setActiveTheme] = useState<"warm" | "light" | "dark">(
-    config.theme === "dark" ? "dark" : config.theme === "light" ? "light" : "warm"
+  const [activeTheme, setActiveTheme] = useState<string>(
+    config.theme ? String(config.theme).toLowerCase() : "warm"
   );
 
   // Layout state: defaults to config layout, but user can toggle
@@ -149,24 +149,68 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
     }).catch(() => {});
   };
 
-  // Theme-specific styles
-  const isDark = activeTheme === "dark";
-  const isWarm = activeTheme === "warm";
+  // Theme-specific styles & distinctive templates
+  const normalizedTheme = String(activeTheme || config.theme || "warm").toLowerCase();
+  const isDark = normalizedTheme === "dark" || normalizedTheme === "midnight";
+  const isMidnight = normalizedTheme === "midnight";
+  const isEmerald = normalizedTheme === "emerald";
+  const isSunset = normalizedTheme === "sunset";
+  const isMinimal = normalizedTheme === "minimal";
+  const isWarm = normalizedTheme === "warm";
 
-  const containerBg = isDark
+  const containerBg = isMidnight
+    ? "bg-[#0B0F19] text-white"
+    : isDark
     ? "bg-ink-950 text-white"
+    : isEmerald
+    ? "bg-[#F3F8F5] text-[#123023]"
+    : isSunset
+    ? "bg-[#FFF8F5] text-[#331C14]"
+    : isMinimal
+    ? "bg-white text-black"
     : isWarm
     ? "bg-[#FAF7F2] text-ink-900"
     : "bg-slate-50 text-ink-900";
 
-  const cardBg = isDark
-    ? "bg-ink-900/90 border-ink-800 text-white shadow-lg"
+  const cardBg = isMidnight
+    ? "bg-[#111827]/90 border-indigo-900/40 text-white shadow-xl hover:border-indigo-600/60"
+    : isDark
+    ? "bg-ink-900/90 border-ink-800 text-white shadow-lg hover:border-ink-700"
+    : isEmerald
+    ? "bg-white border-[#D0E5DA] text-[#123023] shadow-xs hover:border-emerald-400"
+    : isSunset
+    ? "bg-white border-[#F3DDD5] text-[#331C14] shadow-xs hover:border-rose-300"
+    : isMinimal
+    ? "bg-white border-black text-black shadow-none hover:shadow-xs"
     : isWarm
-    ? "bg-white border-[#E9E4DB] text-ink-900 shadow-xs"
-    : "bg-white border-slate-200 text-ink-900 shadow-xs";
+    ? "bg-white border-[#E9E4DB] text-ink-900 shadow-xs hover:border-brand-300"
+    : "bg-white border-slate-200 text-ink-900 shadow-xs hover:border-brand-300";
 
-  const subtleText = isDark ? "text-ink-400" : "text-ink-500";
-  const borderLine = isDark ? "border-ink-800" : isWarm ? "border-[#E9E4DB]" : "border-slate-200";
+  const subtleText = isMidnight
+    ? "text-slate-400"
+    : isDark
+    ? "text-ink-400"
+    : isEmerald
+    ? "text-[#476B5A]"
+    : isSunset
+    ? "text-[#7A5345]"
+    : isMinimal
+    ? "text-neutral-500"
+    : "text-ink-500";
+
+  const borderLine = isMidnight
+    ? "border-indigo-950/80"
+    : isDark
+    ? "border-ink-800"
+    : isEmerald
+    ? "border-[#D0E5DA]"
+    : isSunset
+    ? "border-[#F3DDD5]"
+    : isMinimal
+    ? "border-black"
+    : isWarm
+    ? "border-[#E9E4DB]"
+    : "border-slate-200";
 
   return (
     <div
@@ -456,7 +500,11 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               type={layoutMode}
               testimonials={filteredTestimonials}
               config={{
-                theme: activeTheme,
+                theme: (activeTheme === "dark" || activeTheme === "midnight"
+                  ? "dark"
+                  : activeTheme === "light" || activeTheme === "minimal"
+                  ? "light"
+                  : "warm"),
                 accentColor: config.accentColor,
                 showRatings: config.showRatings,
                 showCompany: config.showCompany,

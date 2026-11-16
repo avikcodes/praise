@@ -74,7 +74,7 @@ export class FacebookPlatformConnector implements PlatformConnector {
 
   async fetchReviews(
     credentials: Record<string, string>,
-    options?: { limit?: number }
+    options?: { limit?: number; since?: Date; cursor?: string }
   ): Promise<NormalizedImportItem[]> {
     const pageAccessToken = credentials.pageAccessToken?.trim();
     const pageId = credentials.pageId?.trim();
@@ -84,11 +84,16 @@ export class FacebookPlatformConnector implements PlatformConnector {
     }
 
     const limit = options?.limit ? Math.min(options.limit, 100) : 50;
-    const endpoint = `https://graph.facebook.com/v19.0/${encodeURIComponent(
+    let endpoint = `https://graph.facebook.com/v19.0/${encodeURIComponent(
       pageId
     )}/ratings?fields=created_time,recommendation_type,review_text,reviewer{id,name,picture}&limit=${limit}&access_token=${encodeURIComponent(
       pageAccessToken
     )}`;
+
+    if (options?.since) {
+      const sinceUnix = Math.floor(new Date(options.since).getTime() / 1000);
+      endpoint += `&since=${sinceUnix}`;
+    }
 
     const res = await fetch(endpoint);
     const data = await res.json();
@@ -100,6 +105,17 @@ export class FacebookPlatformConnector implements PlatformConnector {
     const adapter = getExternalAdapter("FACEBOOK");
     if (!adapter) throw new Error("Facebook adapter not found");
 
-    return adapter.parse(data);
+    let normalized = adapter.parse(data);
+
+    // Incremental filter: only include reviews created after since timestamp
+    if (options?.since) {
+      const sinceTime = new Date(options.since).getTime();
+      normalized = normalized.filter((item) => {
+        if (!item.originalDate) return true;
+        return new Date(item.originalDate).getTime() > sinceTime;
+      });
+    }
+
+    return normalized;
   }
 }

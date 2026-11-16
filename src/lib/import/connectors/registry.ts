@@ -6,6 +6,7 @@ import { G2PlatformConnector } from "./g2-connector.ts";
 import { FacebookPlatformConnector } from "./facebook-connector.ts";
 import { LinkedInManualConnector, CapterraManualConnector } from "./unsupported-connectors.ts";
 import { encryptCredentials, decryptCredentials, maskCredentials } from "../../crypto/vault.ts";
+import { checkConnectionTokenHealth } from "./sync-service.ts";
 import { prisma } from "../../db/client.ts";
 import { previewExternalImport, executeExternalImport } from "../external-importer.ts";
 import type { NormalizedImportItem } from "../external-types.ts";
@@ -290,6 +291,16 @@ export async function listWorkspaceConnections(workspaceId: string) {
       authType: c.authType,
       scopes: c.scopes ? c.scopes.split(" ") : [],
       lastSyncAt: c.lastSyncAt,
+      lastSuccessfulSyncAt: c.lastSuccessfulSyncAt,
+      lastSyncStatus: c.lastSyncStatus,
+      nextSyncAt: c.nextSyncAt,
+      syncEnabled: c.syncEnabled,
+      syncFrequency: c.syncFrequency,
+      retryCount: c.retryCount,
+      maxRetries: c.maxRetries,
+      targetProjectId: c.targetProjectId,
+      lastSeenTimestamp: c.lastSeenTimestamp,
+      tokenHealth: checkConnectionTokenHealth(c),
       lastError: c.lastError,
       metadata,
       maskedCredentials: masked,

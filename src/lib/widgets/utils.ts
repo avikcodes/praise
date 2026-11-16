@@ -1,5 +1,5 @@
-import { WallOfLoveConfig } from "@/types/widgets";
-import { validateHexColor } from "@/lib/branding/utils";
+import type { WallOfLoveConfig } from "../../types/widgets.ts";
+import { validateHexColor } from "../branding/utils.ts";
 
 export function defaultWallOfLoveConfig(
   name = "Wall of Love",

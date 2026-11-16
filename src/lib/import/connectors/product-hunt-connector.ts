@@ -121,7 +121,7 @@ export class ProductHuntPlatformConnector implements PlatformConnector {
 
   async fetchReviews(
     credentials: Record<string, string>,
-    options?: { limit?: number }
+    options?: { limit?: number; since?: Date; cursor?: string }
   ): Promise<NormalizedImportItem[]> {
     const apiToken = credentials.apiToken?.trim();
     const postSlug = credentials.postSlug?.trim();
@@ -182,6 +182,17 @@ export class ProductHuntPlatformConnector implements PlatformConnector {
     const adapter = getExternalAdapter("PRODUCT_HUNT");
     if (!adapter) throw new Error("Product Hunt adapter not found");
 
-    return adapter.parse(json);
+    let normalized = adapter.parse(json);
+
+    // Incremental filter: only include reviews created after since timestamp
+    if (options?.since) {
+      const sinceTime = new Date(options.since).getTime();
+      normalized = normalized.filter((item) => {
+        if (!item.originalDate) return true;
+        return new Date(item.originalDate).getTime() > sinceTime;
+      });
+    }
+
+    return normalized;
   }
 }

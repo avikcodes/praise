@@ -95,7 +95,7 @@ export class TrustpilotPlatformConnector implements PlatformConnector {
 
   async fetchReviews(
     credentials: Record<string, string>,
-    options?: { limit?: number }
+    options?: { limit?: number; since?: Date; cursor?: string }
   ): Promise<NormalizedImportItem[]> {
     const apiKey = credentials.apiKey?.trim();
     const businessUnitId = credentials.businessUnitId?.trim();
@@ -124,6 +124,17 @@ export class TrustpilotPlatformConnector implements PlatformConnector {
     const adapter = getExternalAdapter("TRUSTPILOT");
     if (!adapter) throw new Error("Trustpilot adapter not found");
 
-    return adapter.parse(data);
+    let normalized = adapter.parse(data);
+
+    // Incremental filter: only include reviews created after since timestamp
+    if (options?.since) {
+      const sinceTime = new Date(options.since).getTime();
+      normalized = normalized.filter((item) => {
+        if (!item.originalDate) return true;
+        return new Date(item.originalDate).getTime() > sinceTime;
+      });
+    }
+
+    return normalized;
   }
 }

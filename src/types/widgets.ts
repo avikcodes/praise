@@ -129,5 +129,6 @@ export type PublicWallOfLoveData = {
   };
   totalApproved: number;
   testimonials: PublicTestimonialCard[];
+  isPublished?: boolean;
 };
 

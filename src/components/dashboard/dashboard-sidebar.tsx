@@ -8,6 +8,7 @@ import {
   FolderKanban,
   Gift,
   HardDrive,
+  Heart,
   Inbox,
   LayoutDashboard,
   LayoutGrid,
@@ -41,6 +42,7 @@ const navigationItems: NavItem[] = [
   { label: "Invitations", href: "/dashboard/invitations", icon: Mail },
   { label: "Rewards", href: "/dashboard/rewards", icon: Gift },
   { label: "Widgets", href: "/dashboard/widgets", icon: LayoutGrid },
+  { label: "Walls of Love", href: "/dashboard/walls", icon: Heart },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

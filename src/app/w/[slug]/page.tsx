@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { prisma } from "@/lib/db/client";
-import { parseCustomerMeta } from "@/lib/customers/utils";
-import { parseWidgetConfig } from "@/lib/widgets/utils";
 import { PraiseLogo } from "@/components/brand";
 import { WallOfLoveClient } from "./wall-of-love-client";
-import { PublicTestimonialCard, PublicWallOfLoveData } from "@/types/widgets";
+import { PublicWallOfLoveData } from "@/types/widgets";
 import {
   buildWallOfLoveMetadata,
   generateWallOfLoveJsonLd,
   sanitizePublicSlug,
 } from "@/lib/seo/metadata";
-import { Prisma } from "@prisma/client";
+import { resolvePublicWall } from "@/lib/walls/service";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -128,64 +125,24 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const cleanSlug = sanitizePublicSlug(slug);
 
   try {
-    let widget = await prisma.widget.findFirst({
-      where: {
-        OR: [
-          { id: cleanSlug },
-          { configJson: { contains: `"slug":"${cleanSlug}"` } },
-        ],
-      },
-      include: {
-        project: { select: { name: true, slug: true, logoUrl: true } },
-        workspace: { select: { name: true, slug: true, logoUrl: true } },
-      },
-    });
+    const { wallData, isUnpublished } = await resolvePublicWall(cleanSlug, { preview: true });
 
-    if (!widget) {
-      const matchedProject = await prisma.project.findFirst({
-        where: { slug: cleanSlug },
-        include: {
-          workspace: { select: { name: true, slug: true, logoUrl: true } },
-        },
-      });
-
-      if (matchedProject) {
-        widget = await prisma.widget.findFirst({
-          where: {
-            projectId: matchedProject.id,
-            workspaceId: matchedProject.workspaceId,
-          },
-          include: {
-            project: { select: { name: true, slug: true, logoUrl: true } },
-            workspace: { select: { name: true, slug: true, logoUrl: true } },
-          },
-        });
-
-        if (!widget) {
-          return buildWallOfLoveMetadata(
-            {
-              slug: cleanSlug,
-              title: `${matchedProject.name} Wall of Love`,
-              description: `Real customer testimonials and feedback for ${matchedProject.name}.`,
-              project: matchedProject,
-              workspace: matchedProject.workspace,
-            },
-            cleanSlug
-          );
-        }
-      }
+    if (isUnpublished) {
+      return {
+        title: "Wall of Love Unpublished | Praise",
+        robots: { index: false, follow: false },
+      };
     }
 
-    if (widget) {
-      const config = parseWidgetConfig(widget.configJson, widget.name);
+    if (wallData) {
       return buildWallOfLoveMetadata(
         {
-          slug: config.slug || cleanSlug,
-          title: config.title || widget.name,
-          description: config.description,
-          customLogoUrl: config.customLogoUrl,
-          project: widget.project,
-          workspace: widget.workspace,
+          slug: wallData.slug,
+          title: wallData.title || wallData.name,
+          description: wallData.description,
+          customLogoUrl: wallData.config.customLogoUrl,
+          project: wallData.project,
+          workspace: wallData.workspace,
         },
         cleanSlug
       );
@@ -202,171 +159,61 @@ export default async function PublicWallPage({ params }: PageProps) {
   const { slug } = await params;
   const cleanSlug = sanitizePublicSlug(slug);
 
-  let wallData: PublicWallOfLoveData | null = null;
-
   try {
-    // 1. Locate Widget by slug in configJson or widget ID
-    let widget = await prisma.widget.findFirst({
-      where: {
-        OR: [
-          { id: cleanSlug },
-          { configJson: { contains: `"slug":"${cleanSlug}"` } },
-        ],
-      },
-      include: {
-        project: {
-          select: { id: true, name: true, slug: true, color: true, logoUrl: true },
-        },
-        workspace: {
-          select: { id: true, name: true, slug: true, logoUrl: true },
-        },
-      },
-    });
+    const { wallData, isUnpublished } = await resolvePublicWall(cleanSlug);
 
-    // 2. Fallback: match by project slug if no dedicated widget slug
-    if (!widget) {
-      const matchedProject = await prisma.project.findFirst({
-        where: { slug: cleanSlug },
-        include: {
-          workspace: {
-            select: { id: true, name: true, slug: true, logoUrl: true },
-          },
-        },
-      });
-
-      if (matchedProject) {
-        widget = await prisma.widget.findFirst({
-          where: {
-            projectId: matchedProject.id,
-            workspaceId: matchedProject.workspaceId,
-          },
-          include: {
-            project: {
-              select: { id: true, name: true, slug: true, color: true, logoUrl: true },
-            },
-            workspace: {
-              select: { id: true, name: true, slug: true, logoUrl: true },
-            },
-          },
-        });
-
-        // Virtual widget if not explicitly saved yet
-        if (!widget) {
-          widget = {
-            id: `proj-${matchedProject.id}`,
-            workspaceId: matchedProject.workspaceId,
-            projectId: matchedProject.id,
-            name: `${matchedProject.name} Wall of Love`,
-            type: "WALL_OF_LOVE",
-            theme: "WARM",
-            configJson: JSON.stringify({
-              slug: cleanSlug,
-              title: `${matchedProject.name} Wall of Love`,
-              description: `Real customer testimonials and feedback for ${matchedProject.name}.`,
-              ctaEnabled: true,
-              ctaLabel: `Share Praise for ${matchedProject.name}`,
-              ctaUrl: `/p/${matchedProject.slug}`,
-            }),
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            project: matchedProject,
-            workspace: matchedProject.workspace,
-          } as unknown as typeof widget;
-        }
-      }
+    // Unpublished wall notice
+    if (isUnpublished) {
+      return (
+        <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md w-full rounded-2xl border border-[#E9E4DB] bg-white p-8 shadow-xs space-y-4">
+            <div className="inline-flex items-center justify-center">
+              <PraiseLogo size="md" decorative />
+            </div>
+            <span className="inline-block rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 text-xs font-bold uppercase tracking-wider">
+              Draft / Unpublished
+            </span>
+            <h1 className="text-xl font-bold text-ink-900">
+              This Wall of Love is Currently Unpublished
+            </h1>
+            <p className="text-xs text-ink-600 leading-relaxed">
+              The owner of this Praise workspace has marked this wall as draft or private. If you are the owner, you can publish it in your Praise dashboard.
+            </p>
+            <div className="pt-2">
+              <Link
+                href="/dashboard/walls"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-xs font-bold text-white shadow-2xs hover:bg-brand-600 transition-colors"
+              >
+                Open Wall Management
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
     }
 
-    if (widget) {
-      const config = parseWidgetConfig(widget.configJson, widget.name);
-
-      // Query ONLY APPROVED testimonials for public display
-      const whereCondition: Prisma.TestimonialWhereInput = {
-        workspaceId: widget.workspaceId,
-        status: "APPROVED",
-      };
-
-      if (widget.projectId) {
-        whereCondition.projectId = widget.projectId;
-      }
-
-      if (config.minRating > 0) {
-        whereCondition.rating = { gte: config.minRating };
-      }
-
-      let orderBy: Prisma.TestimonialOrderByWithRelationInput[] = [
-        { submittedAt: "desc" },
-      ];
-
-      if (config.ordering === "featured_first") {
-        orderBy = [{ isFeatured: "desc" }, { submittedAt: "desc" }];
-      } else if (config.ordering === "highest_rated") {
-        orderBy = [{ rating: "desc" }, { submittedAt: "desc" }];
-      } else if (config.ordering === "oldest") {
-        orderBy = [{ submittedAt: "asc" }];
-      }
-
-      const testimonials = await prisma.testimonial.findMany({
-        where: whereCondition,
-        include: {
-          customer: true,
-          project: {
-            select: { id: true, name: true, slug: true },
-          },
-          tags: {
-            include: { tag: true },
-          },
-          mediaAssets: true,
+    if (wallData) {
+      const jsonLd = generateWallOfLoveJsonLd(
+        {
+          slug: wallData.slug,
+          title: wallData.title,
+          description: wallData.description,
+          totalApproved: wallData.totalApproved,
+          project: wallData.project,
+          workspace: wallData.workspace,
         },
-        orderBy,
-      });
+        wallData.testimonials
+      );
 
-      const sanitizedCards: PublicTestimonialCard[] = testimonials.map((t) => {
-        let customerMetaWebsite: string | null = null;
-        if (t.customer?.socialHandle) {
-          const meta = parseCustomerMeta(t.customer.socialHandle);
-          customerMetaWebsite = meta.website;
-        }
-
-        return {
-          id: t.id,
-          content: t.content,
-          rating: t.rating,
-          type: t.type,
-          isFeatured: t.isFeatured,
-          submittedAt: t.submittedAt.toISOString(),
-          customer: {
-            name: t.customer?.name || "Anonymous",
-            company: config.showCompany ? t.customer?.company || null : null,
-            title: config.showCompany ? t.customer?.title || null : null,
-            avatarUrl: config.showAvatar ? t.customer?.avatarUrl || null : null,
-            website: customerMetaWebsite,
-          },
-          project: t.project,
-          tags: config.showTags ? t.tags.map((tagRel) => tagRel.tag.name) : [],
-          source: config.showSource ? "Verified Review" : null,
-          media: t.mediaAssets.map((m) => ({
-            id: m.id,
-            type: m.type,
-            url: m.url,
-            mimeType: m.mimeType,
-            fileSizeBytes: m.fileSizeBytes,
-            durationSeconds: m.durationSeconds,
-          })),
-        };
-      });
-
-      wallData = {
-        widgetId: widget.id,
-        name: widget.name,
-        slug: config.slug,
-        title: config.title,
-        description: config.description,
-        config,
-        project: widget.project,
-        workspace: widget.workspace,
-        totalApproved: sanitizedCards.length,
-        testimonials: sanitizedCards,
-      };
+      return (
+        <>
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          />
+          <WallOfLoveClient data={wallData} />
+        </>
+      );
     }
   } catch (err) {
     console.error("Failed to query public wall:", err);
@@ -375,57 +222,32 @@ export default async function PublicWallPage({ params }: PageProps) {
     }
   }
 
-  // In local development, if database is empty or unseeded, render the fallback demo wall
-  if (!wallData) {
-    if (process.env.NODE_ENV !== "production") {
-      return <WallOfLoveClient data={{ ...fallbackDevWall, slug: cleanSlug }} />;
-    }
-
-    return (
-      <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6 text-center">
-        <div className="max-w-md w-full rounded-2xl border border-[#E9E4DB] bg-white p-8 shadow-xs space-y-4">
-          <div className="inline-flex items-center justify-center">
-            <PraiseLogo size="md" decorative />
-          </div>
-          <h1 className="text-xl font-bold text-ink-900">
-            Wall of Love Not Found
-          </h1>
-          <p className="text-xs text-ink-600 leading-relaxed">
-            The public Wall of Love page you requested does not exist or may have been unlinked.
-          </p>
-          <div className="pt-2">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-warm-100 px-3.5 py-2 text-xs font-semibold text-ink-800 hover:bg-warm-200 transition-colors"
-            >
-              &larr; Return to Homepage
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+  // In local development, if database is unseeded, render the fallback demo wall
+  if (process.env.NODE_ENV !== "production") {
+    return <WallOfLoveClient data={{ ...fallbackDevWall, slug: cleanSlug }} />;
   }
 
-  const jsonLd = generateWallOfLoveJsonLd(
-    {
-      slug: wallData.slug,
-      title: wallData.title,
-      description: wallData.description,
-      totalApproved: wallData.totalApproved,
-      project: wallData.project,
-      workspace: wallData.workspace,
-    },
-    wallData.testimonials
-  );
-
   return (
-    <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
-      <WallOfLoveClient data={wallData} />
-    </>
+    <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-6 text-center">
+      <div className="max-w-md w-full rounded-2xl border border-[#E9E4DB] bg-white p-8 shadow-xs space-y-4">
+        <div className="inline-flex items-center justify-center">
+          <PraiseLogo size="md" decorative />
+        </div>
+        <h1 className="text-xl font-bold text-ink-900">
+          Wall of Love Not Found
+        </h1>
+        <p className="text-xs text-ink-600 leading-relaxed">
+          The public Wall of Love page you requested does not exist or may have been unlinked.
+        </p>
+        <div className="pt-2">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-warm-100 px-3.5 py-2 text-xs font-semibold text-ink-800 hover:bg-warm-200 transition-colors"
+          >
+            &larr; Return to Homepage
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }
-

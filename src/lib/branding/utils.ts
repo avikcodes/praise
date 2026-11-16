@@ -1,10 +1,10 @@
-import {
+import type {
   WidgetCardBorder,
   WidgetCardRadius,
   WidgetCardSpacing,
   WidgetTypographyFamily,
   WidgetThemeMode,
-} from "@/types/widgets";
+} from "../../types/widgets.ts";
 
 export const PRESET_ACCENT_COLORS = [
   { label: "Praise Purple", value: "#7049D8" },
