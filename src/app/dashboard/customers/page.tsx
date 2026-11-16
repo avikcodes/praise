@@ -197,11 +197,14 @@ export default function CustomersPage() {
   const [isCreatingAttr, setIsCreatingAttr] = useState(false);
 
   const toast = useToast();
-  const workspaceId = activeWorkspace?.id;
+  const workspaceId =
+    activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+      ? activeWorkspace.id
+      : undefined;
 
   // Load CRM Metadata (Stages, Attributes, Segments, Tags, Projects)
   const fetchCrmMetadata = useCallback(async () => {
-    if (!workspaceId) return;
+    if (!workspaceId || workspaceId.startsWith("ws-default")) return;
     try {
       const [stagesRes, attrsRes, segsRes, tagsRes, projsRes] = await Promise.all([
         fetch(`/api/workspaces/${workspaceId}/customers/stages`),
@@ -239,7 +242,7 @@ export default function CustomersPage() {
   // Fetch customers with active filters
   const fetchCustomers = useCallback(
     async (showLoading = true) => {
-      if (!workspaceId) return;
+      if (!workspaceId || workspaceId.startsWith("ws-default")) return;
       if (showLoading) setIsLoading(true);
 
       try {

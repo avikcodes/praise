@@ -168,19 +168,12 @@ const defaultFallbackProject: ProjectItem = {
 };
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([
-    defaultFallbackWorkspace,
-  ]);
-  const [activeWorkspaceId, setActiveWorkspaceIdState] =
-    useState<string>("ws-default");
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string>("");
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
 
-  const [projects, setProjects] = useState<ProjectItem[]>([
-    defaultFallbackProject,
-  ]);
-  const [activeProjectId, setActiveProjectIdState] = useState<string | null>(
-    "proj-default",
-  );
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [activeProjectId, setActiveProjectIdState] = useState<string | null>(null);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
 
   const [brands, setBrands] = useState<BrandItem[]>([]);
@@ -193,6 +186,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     projects.find((p) => p.id === activeProjectId) || projects[0] || null;
 
   const setActiveWorkspaceId = useCallback((id: string) => {
+    if (!id || id.startsWith("ws-default")) return;
     setActiveWorkspaceIdState(id);
     if (typeof window !== "undefined") {
       try {
@@ -233,20 +227,25 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.workspaces) && data.workspaces.length > 0) {
-          setWorkspaces(data.workspaces);
-          const savedId =
-            typeof window !== "undefined"
-              ? localStorage.getItem(LOCAL_STORAGE_WS_KEY)
-              : null;
-          const matched = data.workspaces.find(
-            (w: WorkspaceItem) => w.id === savedId,
+          const valid = data.workspaces.filter(
+            (w: WorkspaceItem) => w.id && !w.id.startsWith("ws-default")
           );
-          if (matched) {
-            setActiveWorkspaceIdState(matched.id);
-          } else if (
-            !data.workspaces.some((w: WorkspaceItem) => w.id === activeWorkspaceId)
-          ) {
-            setActiveWorkspaceIdState(data.workspaces[0].id);
+          if (valid.length > 0) {
+            setWorkspaces(valid);
+            const savedId =
+              typeof window !== "undefined"
+                ? localStorage.getItem(LOCAL_STORAGE_WS_KEY)
+                : null;
+            const matched = valid.find(
+              (w: WorkspaceItem) => w.id === savedId,
+            );
+            const chosenId = matched ? matched.id : valid[0].id;
+            setActiveWorkspaceIdState(chosenId);
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem(LOCAL_STORAGE_WS_KEY, chosenId);
+              } catch {}
+            }
           }
         }
       }
@@ -255,7 +254,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoadingWorkspaces(false);
     }
-  }, [activeWorkspaceId]);
+  }, []);
 
   // Manual refresh of projects for current active workspace
   const refreshProjects = useCallback(async () => {
@@ -325,15 +324,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data.workspaces) && data.workspaces.length > 0) {
-            setWorkspaces(data.workspaces);
-            const savedId =
-              typeof window !== "undefined"
-                ? localStorage.getItem(LOCAL_STORAGE_WS_KEY)
-                : null;
-            const matched = data.workspaces.find(
-              (w: WorkspaceItem) => w.id === savedId,
+            const valid = data.workspaces.filter(
+              (w: WorkspaceItem) => w.id && !w.id.startsWith("ws-default")
             );
-            setActiveWorkspaceIdState(matched ? matched.id : data.workspaces[0].id);
+            if (valid.length > 0) {
+              setWorkspaces(valid);
+              const savedId =
+                typeof window !== "undefined"
+                  ? localStorage.getItem(LOCAL_STORAGE_WS_KEY)
+                  : null;
+              const matched = valid.find(
+                (w: WorkspaceItem) => w.id === savedId,
+              );
+              const chosenId = matched ? matched.id : valid[0].id;
+              setActiveWorkspaceIdState(chosenId);
+              if (typeof window !== "undefined") {
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_WS_KEY, chosenId);
+                } catch {}
+              }
+            }
           }
         }
       } catch {

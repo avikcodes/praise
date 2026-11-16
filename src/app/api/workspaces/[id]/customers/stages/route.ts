@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireWorkspaceMember, AuthError } from "@/lib/auth/guards";
 import { ensureDefaultStages } from "@/lib/customers/crm";
 
 type RouteParams = {
@@ -9,8 +9,9 @@ type RouteParams = {
 
 export async function GET(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId } = await context.params;
-    await requireWorkspaceMember(workspaceId);
+    const { id: rawId } = await context.params;
+    const { workspace } = await requireWorkspaceMember(rawId);
+    const workspaceId = workspace.id;
 
     const stages = await ensureDefaultStages(workspaceId);
 
@@ -35,7 +36,13 @@ export async function GET(request: Request, context: RouteParams) {
         customerCount: countMap.get(s.key.toUpperCase()) || 0,
       })),
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("List customer stages error:", error);
     return NextResponse.json(
       { error: "Failed to load customer stages." },
@@ -46,8 +53,9 @@ export async function GET(request: Request, context: RouteParams) {
 
 export async function POST(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId } = await context.params;
-    await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
+    const { id: rawId } = await context.params;
+    const { workspace } = await requireWorkspaceMember(rawId, ["OWNER", "ADMIN"]);
+    const workspaceId = workspace.id;
 
     const body = await request.json();
     const { name, key, description, color, order } = body;
@@ -100,7 +108,13 @@ export async function POST(request: Request, context: RouteParams) {
       { success: true, stage },
       { status: 201 },
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("Create customer stage error:", error);
     return NextResponse.json(
       { error: "Failed to create stage." },

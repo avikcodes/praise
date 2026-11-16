@@ -58,7 +58,15 @@ const devFallbackCards: PublicTestimonialCard[] = [
     },
     tags: ["Video Feedback", "Productivity"],
     source: "Verified Review",
-    media: [],
+    media: [
+      {
+        id: "med-video-demo",
+        type: "VIDEO",
+        url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+        mimeType: "video/mp4",
+        durationSeconds: 15,
+      },
+    ],
   },
   {
     id: "demo-3",
@@ -78,6 +86,33 @@ const devFallbackCards: PublicTestimonialCard[] = [
     tags: ["UX", "Design"],
     source: "Verified Review",
     media: [],
+  },
+  {
+    id: "demo-4",
+    content:
+      "Hearing real customer voices helped us close high-tier enterprise deals with 3x higher velocity.",
+    rating: 5,
+    type: "AUDIO",
+    isFeatured: true,
+    submittedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
+    customer: {
+      name: "David Kim",
+      company: "Apex Dynamics",
+      title: "Chief Revenue Officer",
+      avatarUrl: null,
+      website: "https://apexdynamics.example",
+    },
+    tags: ["Enterprise", "Audio Proof"],
+    source: "Voice Note",
+    media: [
+      {
+        id: "med-audio-demo",
+        type: "AUDIO",
+        url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+        mimeType: "audio/mp3",
+        durationSeconds: 45,
+      },
+    ],
   },
 ];
 

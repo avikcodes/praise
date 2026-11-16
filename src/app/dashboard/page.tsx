@@ -106,7 +106,10 @@ export default function DashboardOverviewPage() {
     approvedCount: number;
   } | null>(null);
 
-  const workspaceId = activeWorkspace?.id;
+  const workspaceId =
+    activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+      ? activeWorkspace.id
+      : undefined;
 
   const fetchOverview = useCallback(
     async (showRefreshIndicator = false) => {

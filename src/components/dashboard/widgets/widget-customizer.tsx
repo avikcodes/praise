@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   Code,
+  Columns3,
   Copy,
   ExternalLink,
   Image as ImageIcon,
@@ -14,6 +15,7 @@ import {
   LayoutGrid,
   List,
   Loader2,
+  Mic,
   Monitor,
   Palette,
   Quote,
@@ -21,11 +23,13 @@ import {
   Search,
   ShieldCheck,
   Sliders,
+  SlidersHorizontal,
   Smartphone,
   Sparkles,
   Tablet,
   Trash2,
   UploadCloud,
+  Video,
 } from "lucide-react";
 import {
   PublicTestimonialCard,
@@ -139,6 +143,14 @@ export function WidgetCustomizer({
     initialWidget?.config.widgetType ||
       (initialWidget?.config.layout === "carousel"
         ? "carousel"
+        : initialWidget?.config.layout === "masonry"
+        ? "masonry"
+        : initialWidget?.config.layout === "slider"
+        ? "slider"
+        : initialWidget?.config.layout === "video"
+        ? "video"
+        : initialWidget?.config.layout === "audio"
+        ? "audio"
         : initialWidget?.config.layout === "single_quote"
         ? "single_quote"
         : initialWidget?.config.layout === "list"
@@ -470,12 +482,10 @@ export function WidgetCustomizer({
 
       const method = isEditing ? "PATCH" : "POST";
       const dbType =
-        widgetType === "carousel"
+        widgetType === "carousel" || widgetType === "slider"
           ? "CAROUSEL"
           : widgetType === "single_quote"
           ? "QUOTE_CARD"
-          : widgetType === "list"
-          ? "GRID"
           : "GRID";
 
       const res = await fetch(endpoint, {
@@ -513,7 +523,13 @@ export function WidgetCustomizer({
   const scriptSnippet = `<!-- Praise Testimonial Widget -->\n<div data-praise-widget="${embedSlug}"></div>\n<script async src="${origin}/embed.js"></script>`;
   
   const defaultIframeHeight =
-    widgetType === "single_quote" ? "420" : widgetType === "carousel" ? "520" : "700";
+    widgetType === "single_quote"
+      ? "420"
+      : widgetType === "carousel" || widgetType === "slider"
+      ? "520"
+      : widgetType === "audio"
+      ? "560"
+      : "700";
 
   const iframeStaticSnippet = `<!-- Praise Static HTML iFrame Widget -->\n<iframe\n  src="${origin}/embed/${embedSlug}?type=${widgetType}&theme=${theme}"\n  width="100%"\n  height="${defaultIframeHeight}"\n  frameborder="0"\n  scrolling="no"\n  loading="lazy"\n  title="Customer Testimonials"\n  style="width: 100%; border: none; overflow: hidden; background: transparent;"\n  allow="autoplay; encrypted-media; fullscreen"\n></iframe>`;
 
@@ -1001,20 +1017,44 @@ export function WidgetCustomizer({
                         desc: "Responsive multi-column card layout",
                       },
                       {
+                        id: "masonry",
+                        label: "2. Masonry",
+                        icon: Columns3,
+                        desc: "Dynamic waterfall flow for variable card heights",
+                      },
+                      {
                         id: "carousel",
-                        label: "2. Carousel",
+                        label: "3. Carousel",
                         icon: Layers,
-                        desc: "Horizontal slide track with controls",
+                        desc: "Horizontal slide track with interactive controls",
+                      },
+                      {
+                        id: "slider",
+                        label: "4. Slider",
+                        icon: SlidersHorizontal,
+                        desc: "Hero spotlight slider with progress bar & dots",
+                      },
+                      {
+                        id: "video",
+                        label: "5. Video Proof",
+                        icon: Video,
+                        desc: "Video-first cards with custom playback controls",
+                      },
+                      {
+                        id: "audio",
+                        label: "6. Audio Proof",
+                        icon: Mic,
+                        desc: "Voice notes with animated waveform & scrubber",
                       },
                       {
                         id: "single_quote",
-                        label: "3. Single Quote",
+                        label: "7. Single Quote",
                         icon: Quote,
                         desc: "Hero spotlight with bold quote text",
                       },
                       {
                         id: "list",
-                        label: "4. List",
+                        label: "8. List",
                         icon: List,
                         desc: "Linear vertical feed or changelog flow",
                       },
@@ -1046,13 +1086,13 @@ export function WidgetCustomizer({
                 </div>
 
                 {/* Specific Layout Settings */}
-                {widgetType === "grid" && (
+                {(widgetType === "grid" || widgetType === "masonry" || widgetType === "video" || widgetType === "audio") && (
                   <div className="space-y-3 pt-3 border-t border-line">
                     <label className="block text-xs font-semibold text-ink-900">
-                      Grid Columns
+                      Columns Layout
                     </label>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[1, 2, 3, 4].map((cols) => (
+                    <div className={`grid gap-2 ${widgetType === "audio" ? "grid-cols-2" : "grid-cols-4"}`}>
+                      {(widgetType === "audio" ? [1, 2] : [1, 2, 3, 4]).map((cols) => (
                         <button
                           key={cols}
                           type="button"
@@ -1070,7 +1110,7 @@ export function WidgetCustomizer({
                   </div>
                 )}
 
-                {widgetType === "carousel" && (
+                {(widgetType === "carousel" || widgetType === "slider") && (
                   <div className="space-y-3 pt-3 border-t border-line">
                     <label className="flex items-center gap-2 cursor-pointer font-semibold text-ink-900 text-xs">
                       <input
@@ -1094,6 +1134,7 @@ export function WidgetCustomizer({
                         >
                           <option value={3000}>3 seconds (Fast)</option>
                           <option value={5000}>5 seconds (Default)</option>
+                          <option value={6000}>6 seconds (Standard)</option>
                           <option value={8000}>8 seconds (Relaxed)</option>
                           <option value={10000}>10 seconds (Slow)</option>
                         </select>

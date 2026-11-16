@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       },
     });
 
-    if (!user) {
+    if (!user || !user.passwordHash) {
       return NextResponse.json(
         { error: "Invalid email or password." },
         { status: 401 },

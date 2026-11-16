@@ -1,12 +1,15 @@
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
+import { cache } from "react";
 import { prisma } from "../db/client.ts";
+import { auth } from "./server.ts";
+import { syncNeonUser } from "./sync.ts";
 
 export const SESSION_COOKIE_NAME = "praise_session";
 export const SESSION_DURATION_DAYS = 14;
 
 /**
- * Creates a new session for a user in the database and returns the session token.
+ * Creates a new session for a user in the database (legacy support).
  */
 export async function createSession(userId: string): Promise<string> {
   const sessionToken = randomBytes(32).toString("hex");
@@ -24,7 +27,7 @@ export async function createSession(userId: string): Promise<string> {
 }
 
 /**
- * Sets the secure HttpOnly session cookie on the client response.
+ * Sets the secure HttpOnly session cookie on the client response (legacy support).
  */
 export async function setSessionCookie(sessionToken: string): Promise<void> {
   const cookieStore = await cookies();
@@ -40,7 +43,7 @@ export async function setSessionCookie(sessionToken: string): Promise<void> {
 }
 
 /**
- * Clears the session cookie and deletes the session row from the database.
+ * Clears session cookies and destroys session state.
  */
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
@@ -60,10 +63,41 @@ export async function destroySession(): Promise<void> {
 }
 
 /**
- * Validates the session from the incoming request cookie.
- * Returns the authenticated user or null.
+ * Validates the session from the incoming request.
+ * 1. Checks Neon Managed Better Auth session first.
+ * 2. Idempotently syncs Neon Auth user to application schema if authenticated.
+ * 3. Falls back to legacy session cookie if present.
+ * Uses React cache() to deduplicate lookups across the same request render tree.
  */
-export async function getSessionUser() {
+export const getSessionUser = cache(async () => {
+  // 1. Check Neon Auth session
+  let neonSessionUser = null;
+  try {
+    const { data: sessionData } = await auth.getSession();
+    if (sessionData?.user) {
+      neonSessionUser = sessionData.user;
+    }
+  } catch {
+    // If Neon Auth session check fails or is unconfigured, proceed to legacy check
+  }
+
+  if (neonSessionUser) {
+    try {
+      const user = await syncNeonUser(neonSessionUser);
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatarUrl: user.avatarUrl,
+        createdAt: user.createdAt,
+      };
+    } catch (syncError) {
+      console.error("[auth] Critical error synchronizing authenticated Neon user:", syncError);
+      throw syncError;
+    }
+  }
+
+  // 2. Legacy session cookie fallback
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
@@ -101,5 +135,4 @@ export async function getSessionUser() {
   } catch {
     return null;
   }
-}
-
+});

@@ -24,12 +24,7 @@ export function WorkspaceSwitcher() {
     createWorkspace,
   } = useWorkspace();
 
-  const currentWorkspace = activeWorkspace || workspaces[0] || {
-    id: "ws-default",
-    name: "Default Workspace",
-    slug: "default",
-    role: "OWNER",
-  };
+  const currentWorkspace = activeWorkspace || workspaces[0] || null;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -87,14 +82,14 @@ export function WorkspaceSwitcher() {
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand-500 text-white font-semibold text-xs shadow-xs">
-              {currentWorkspace.name.charAt(0).toUpperCase()}
+              {currentWorkspace ? currentWorkspace.name.charAt(0).toUpperCase() : <Building2 size={13} />}
             </div>
             <div className="min-w-0 truncate">
               <span className="block truncate font-semibold text-ink-900 leading-tight">
-                {currentWorkspace.name}
+                {currentWorkspace ? currentWorkspace.name : "Select Workspace"}
               </span>
               <span className="block text-[10px] text-ink-400 capitalize">
-                {currentWorkspace.role.toLowerCase()}
+                {currentWorkspace ? currentWorkspace.role.toLowerCase() : "Workspace"}
               </span>
             </div>
           </div>
@@ -123,7 +118,7 @@ export function WorkspaceSwitcher() {
                   }}
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs transition-colors text-left",
-                    ws.id === currentWorkspace.id
+                    currentWorkspace && ws.id === currentWorkspace.id
                       ? "bg-warm-100 font-semibold text-ink-900"
                       : "text-ink-700 hover:bg-warm-50",
                   )}

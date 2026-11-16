@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireWorkspaceMember, AuthError } from "@/lib/auth/guards";
 
 type RouteParams = {
   params: Promise<{ id: string; stageId: string }>;
@@ -8,8 +8,9 @@ type RouteParams = {
 
 export async function PATCH(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId, stageId } = await context.params;
-    await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
+    const { id: rawId, stageId } = await context.params;
+    const { workspace } = await requireWorkspaceMember(rawId, ["OWNER", "ADMIN"]);
+    const workspaceId = workspace.id;
 
     const body = await request.json();
     const { name, description, color, order } = body;
@@ -36,7 +37,13 @@ export async function PATCH(request: Request, context: RouteParams) {
     });
 
     return NextResponse.json({ success: true, stage: updated });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("Update stage error:", error);
     return NextResponse.json(
       { error: "Failed to update stage." },
@@ -47,8 +54,9 @@ export async function PATCH(request: Request, context: RouteParams) {
 
 export async function DELETE(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId, stageId } = await context.params;
-    await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
+    const { id: rawId, stageId } = await context.params;
+    const { workspace } = await requireWorkspaceMember(rawId, ["OWNER", "ADMIN"]);
+    const workspaceId = workspace.id;
 
     const stage = await prisma.customerStage.findUnique({
       where: { id: stageId, workspaceId },
@@ -82,7 +90,13 @@ export async function DELETE(request: Request, context: RouteParams) {
       success: true,
       message: "Stage deleted. Associated customers reassigned to New.",
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("Delete stage error:", error);
     return NextResponse.json(
       { error: "Failed to delete stage." },

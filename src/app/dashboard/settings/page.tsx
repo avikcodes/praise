@@ -174,7 +174,10 @@ export default function SettingsPage() {
 
   // Fetch API keys for active workspace
   useEffect(() => {
-    const wsId = activeWorkspace?.id;
+    const wsId =
+      activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+        ? activeWorkspace.id
+        : undefined;
     if (!wsId) return;
     let ignore = false;
     fetch(`/api/workspaces/${wsId}/api-keys`)

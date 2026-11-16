@@ -143,6 +143,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
           customLogoUrl: wallData.config.customLogoUrl,
           project: wallData.project,
           workspace: wallData.workspace,
+          canonicalUrl: wallData.canonicalUrl,
         },
         cleanSlug
       );
@@ -201,6 +202,7 @@ export default async function PublicWallPage({ params }: PageProps) {
           totalApproved: wallData.totalApproved,
           project: wallData.project,
           workspace: wallData.workspace,
+          canonicalUrl: wallData.canonicalUrl,
         },
         wallData.testimonials
       );

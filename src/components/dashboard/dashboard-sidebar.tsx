@@ -9,12 +9,14 @@ import {
   Gift,
   HardDrive,
   Heart,
+  Globe,
   Inbox,
   LayoutDashboard,
   LayoutGrid,
   LifeBuoy,
   Mail,
   MessageSquareQuote,
+  Network,
   Settings,
   Users2,
   X,
@@ -43,6 +45,8 @@ const navigationItems: NavItem[] = [
   { label: "Rewards", href: "/dashboard/rewards", icon: Gift },
   { label: "Widgets", href: "/dashboard/widgets", icon: LayoutGrid },
   { label: "Walls of Love", href: "/dashboard/walls", icon: Heart },
+  { label: "Brand Pages", href: "/dashboard/brands", icon: Globe },
+  { label: "Domains", href: "/dashboard/domains", icon: Network },
   { label: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

@@ -1,5 +1,22 @@
-export type WidgetDisplayType = "grid" | "carousel" | "single_quote" | "list";
-export type WidgetLayout = "masonry" | "grid" | "carousel" | "single_quote" | "list" | "adaptive";
+export type WidgetDisplayType =
+  | "grid"
+  | "carousel"
+  | "single_quote"
+  | "list"
+  | "masonry"
+  | "slider"
+  | "video"
+  | "audio";
+export type WidgetLayout =
+  | "masonry"
+  | "grid"
+  | "carousel"
+  | "single_quote"
+  | "list"
+  | "adaptive"
+  | "slider"
+  | "video"
+  | "audio";
 export type WidgetThemeMode = "warm" | "light" | "dark" | "auto" | "transparent";
 export type WidgetOrdering = "featured_first" | "highest_rated" | "newest" | "oldest";
 export type WidgetTypographyFamily = "sans" | "serif" | "mono" | "geometric" | "humanist";
@@ -130,5 +147,10 @@ export type PublicWallOfLoveData = {
   totalApproved: number;
   testimonials: PublicTestimonialCard[];
   isPublished?: boolean;
+  canonicalUrl?: string;
+  customDomain?: {
+    domain: string;
+    status: string;
+  } | null;
 };
 

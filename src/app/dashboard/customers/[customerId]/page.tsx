@@ -149,7 +149,10 @@ export default function CustomerDetailPage({ params }: PageProps) {
   const router = useRouter();
   const toast = useToast();
   const { activeWorkspace } = useWorkspace();
-  const workspaceId = activeWorkspace?.id;
+  const workspaceId =
+    activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+      ? activeWorkspace.id
+      : undefined;
 
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [stages, setStages] = useState<any[]>([]);

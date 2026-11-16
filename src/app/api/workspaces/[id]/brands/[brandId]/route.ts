@@ -1,28 +1,31 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { requireWorkspaceMember } from "@/lib/auth/guards";
-import { updateBrandSchema } from "@/lib/auth/validation";
+import {
+  updateWorkspaceBrand,
+  deleteWorkspaceBrand,
+  parseIdArray,
+  parseSocialLinks,
+} from "@/lib/brands/service";
 
 type RouteParams = {
   params: Promise<{ id: string; brandId: string }>;
 };
 
-export async function GET(request: Request, { params }: RouteParams) {
+/**
+ * GET /api/workspaces/[id]/brands/[brandId]
+ * Returns brand profile details along with available walls and approved testimonials for curation.
+ */
+export async function GET(request: NextRequest, context: RouteParams) {
   try {
-    const { id, brandId } = await params;
-    await requireWorkspaceMember(id);
+    const { id: workspaceId, brandId } = await context.params;
+    await requireWorkspaceMember(workspaceId);
 
     const brand = await prisma.brand.findFirst({
-      where: { id: brandId, workspaceId: id },
+      where: { id: brandId, workspaceId },
       include: {
-        projects: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            color: true,
-          },
-        },
+        projects: { select: { id: true, name: true, slug: true } },
+        customDomains: { select: { id: true, domain: true, status: true } },
       },
     });
 
@@ -30,119 +33,105 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: "Brand not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ brand });
-  } catch (error: unknown) {
-    const status =
-      typeof error === "object" && error && "status" in error
-        ? Number(error.status)
-        : 500;
-    const message = error instanceof Error ? error.message : "Failed to fetch brand";
-    return NextResponse.json({ error: message }, { status });
+    // Available walls of love in workspace
+    const availableWalls = await prisma.wallOfLove.findMany({
+      where: { workspaceId, isPublished: true },
+      select: { id: true, name: true, slug: true, title: true, theme: true, layout: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Available approved testimonials
+    const availableTestimonials = await prisma.testimonial.findMany({
+      where: { workspaceId, status: "APPROVED" },
+      include: {
+        customer: { select: { name: true, company: true, title: true, avatarUrl: true } },
+        tags: { select: { tag: { select: { name: true } } } },
+      },
+      orderBy: [{ isFeatured: "desc" }, { submittedAt: "desc" }],
+      take: 200,
+    });
+
+    const formattedTestimonials = availableTestimonials.map((t: any) => ({
+      id: t.id,
+      content: t.content,
+      rating: t.rating,
+      type: t.type,
+      isFeatured: t.isFeatured,
+      submittedAt: t.submittedAt ? new Date(t.submittedAt).toISOString() : new Date().toISOString(),
+      customerName: t.customer?.name || "Customer",
+      customerCompany: t.customer?.company || null,
+      tags: (t.tags || []).map((item: any) => item.tag?.name).filter(Boolean),
+    }));
+
+    return NextResponse.json({
+      success: true,
+      brand: {
+        ...brand,
+        selectedWallIdList: parseIdArray(brand.selectedWallIds),
+        featuredTestimonialIdList: parseIdArray(brand.featuredTestimonialIds),
+        socialLinks: parseSocialLinks(brand.socialLinksJson),
+        publicUrl: `/b/${brand.slug}`,
+      },
+      availableWalls,
+      availableTestimonials: formattedTestimonials,
+    });
+  } catch (error: any) {
+    console.error("Failed to get brand:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to get brand" },
+      { status: error.status || 500 }
+    );
   }
 }
 
-export async function PUT(request: Request, { params }: RouteParams) {
+/**
+ * PATCH /api/workspaces/[id]/brands/[brandId]
+ * Updates brand profile configuration.
+ */
+export async function PATCH(request: NextRequest, context: RouteParams) {
   try {
-    const { id, brandId } = await params;
-    await requireWorkspaceMember(id, ["OWNER", "ADMIN"]);
+    const { id: workspaceId, brandId } = await context.params;
+    await requireWorkspaceMember(workspaceId);
+
     const body = await request.json();
-    const validated = updateBrandSchema.safeParse(body);
-
-    if (!validated.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: validated.error.format() },
-        { status: 400 },
-      );
-    }
-
-    const brand = await prisma.brand.findFirst({
-      where: { id: brandId, workspaceId: id },
-    });
-
-    if (!brand) {
-      return NextResponse.json({ error: "Brand not found" }, { status: 404 });
-    }
-
-    const { name, slug, logoUrl, accentColor, websiteUrl } = validated.data;
-
-    // Check slug uniqueness if changed
-    if (slug && slug !== brand.slug) {
-      const existing = await prisma.brand.findUnique({
-        where: {
-          workspaceId_slug: {
-            workspaceId: id,
-            slug,
-          },
-        },
-      });
-      if (existing) {
-        return NextResponse.json(
-          { error: "A brand with this URL slug already exists in this workspace." },
-          { status: 409 },
-        );
-      }
-    }
-
-    const updated = await prisma.brand.update({
-      where: { id: brandId },
-      data: {
-        ...(name ? { name } : {}),
-        ...(slug ? { slug } : {}),
-        ...(logoUrl !== undefined ? { logoUrl } : {}),
-        ...(accentColor ? { accentColor } : {}),
-        ...(websiteUrl !== undefined ? { websiteUrl } : {}),
-      },
+    const updated = await updateWorkspaceBrand({
+      id: brandId,
+      workspaceId,
+      ...body,
     });
 
     return NextResponse.json({
-      message: "Brand updated successfully.",
+      success: true,
       brand: updated,
     });
-  } catch (error: unknown) {
-    const status =
-      typeof error === "object" && error && "status" in error
-        ? Number(error.status)
-        : 500;
-    const message = error instanceof Error ? error.message : "Failed to update brand";
-    return NextResponse.json({ error: message }, { status });
+  } catch (error: any) {
+    console.error("Failed to update brand:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to update brand" },
+      { status: error.status || 400 }
+    );
   }
 }
 
-export async function DELETE(request: Request, { params }: RouteParams) {
+/**
+ * DELETE /api/workspaces/[id]/brands/[brandId]
+ * Deletes a brand profile.
+ */
+export async function DELETE(request: NextRequest, context: RouteParams) {
   try {
-    const { id, brandId } = await params;
-    await requireWorkspaceMember(id, ["OWNER", "ADMIN"]);
+    const { id: workspaceId, brandId } = await context.params;
+    await requireWorkspaceMember(workspaceId);
 
-    const brand = await prisma.brand.findFirst({
-      where: { id: brandId, workspaceId: id },
-      include: {
-        _count: {
-          select: {
-            projects: true,
-          },
-        },
-      },
-    });
-
-    if (!brand) {
-      return NextResponse.json({ error: "Brand not found" }, { status: 404 });
-    }
-
-    // Delete brand (projects with brandId will have brandId set to null via SetNull)
-    await prisma.brand.delete({
-      where: { id: brandId },
-    });
+    const result = await deleteWorkspaceBrand(workspaceId, brandId);
 
     return NextResponse.json({
-      message: `Brand "${brand.name}" deleted. Any linked projects remain intact and unbranded.`,
-      deletedId: brandId,
+      ...result,
     });
-  } catch (error: unknown) {
-    const status =
-      typeof error === "object" && error && "status" in error
-        ? Number(error.status)
-        : 500;
-    const message = error instanceof Error ? error.message : "Failed to delete brand";
-    return NextResponse.json({ error: message }, { status });
+  } catch (error: any) {
+    console.error("Failed to delete brand:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to delete brand" },
+      { status: error.status || 400 }
+    );
   }
 }

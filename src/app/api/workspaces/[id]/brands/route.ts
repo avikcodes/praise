@@ -1,101 +1,71 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db/client";
+import { NextRequest, NextResponse } from "next/server";
 import { requireWorkspaceMember } from "@/lib/auth/guards";
-import { createBrandSchema } from "@/lib/auth/validation";
+import {
+  listWorkspaceBrands,
+  createWorkspaceBrand,
+} from "@/lib/brands/service";
 
 type RouteParams = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(request: Request, { params }: RouteParams) {
+/**
+ * GET /api/workspaces/[id]/brands
+ * Lists all brands and brand profiles configured in a workspace.
+ */
+export async function GET(request: NextRequest, context: RouteParams) {
   try {
-    const { id } = await params;
-    await requireWorkspaceMember(id);
+    const { id: workspaceId } = await context.params;
+    await requireWorkspaceMember(workspaceId);
 
-    try {
-      const brands = await prisma.brand.findMany({
-        where: { workspaceId: id },
-        include: {
-          _count: {
-            select: {
-              projects: true,
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get("search") || undefined;
+    const isPublishedParam = searchParams.get("isPublished");
+    const isPublished = isPublishedParam !== null ? isPublishedParam === "true" : undefined;
 
-      return NextResponse.json({ brands });
-    } catch (dbError) {
-      if (process.env.NODE_ENV !== "production") {
-        return NextResponse.json({ brands: [] });
-      }
-      throw dbError;
-    }
-  } catch (error: unknown) {
-    const status =
-      typeof error === "object" && error && "status" in error
-        ? Number(error.status)
-        : 500;
-    const message = error instanceof Error ? error.message : "Failed to fetch brands";
-    return NextResponse.json({ error: message }, { status });
+    const brands = await listWorkspaceBrands(workspaceId, { search, isPublished });
+
+    return NextResponse.json({
+      success: true,
+      brands,
+      total: brands.length,
+    });
+  } catch (error: any) {
+    console.error("Failed to list brands:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to list brands" },
+      { status: error.status || 500 }
+    );
   }
 }
 
-export async function POST(request: Request, { params }: RouteParams) {
+/**
+ * POST /api/workspaces/[id]/brands
+ * Creates a new brand profile in the workspace.
+ */
+export async function POST(request: NextRequest, context: RouteParams) {
   try {
-    const { id } = await params;
-    await requireWorkspaceMember(id, ["OWNER", "ADMIN"]);
+    const { id: workspaceId } = await context.params;
+    await requireWorkspaceMember(workspaceId);
+
     const body = await request.json();
-    const validated = createBrandSchema.safeParse(body);
-
-    if (!validated.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: validated.error.format() },
-        { status: 400 },
-      );
-    }
-
-    const { name, slug, logoUrl, accentColor, websiteUrl } = validated.data;
-
-    // Check slug uniqueness in this workspace
-    const existing = await prisma.brand.findUnique({
-      where: {
-        workspaceId_slug: {
-          workspaceId: id,
-          slug,
-        },
-      },
-    });
-
-    if (existing) {
-      return NextResponse.json(
-        { error: "A brand with this URL slug already exists in this workspace." },
-        { status: 409 },
-      );
-    }
-
-    const brand = await prisma.brand.create({
-      data: {
-        workspaceId: id,
-        name,
-        slug,
-        logoUrl: logoUrl || null,
-        accentColor: accentColor || "#7049D8",
-        websiteUrl: websiteUrl || null,
-      },
+    const brand = await createWorkspaceBrand({
+      workspaceId,
+      ...body,
     });
 
     return NextResponse.json(
-      { message: "Brand created successfully.", brand },
-      { status: 201 },
+      {
+        success: true,
+        brand,
+      },
+      { status: 201 }
     );
-  } catch (error: unknown) {
-    const status =
-      typeof error === "object" && error && "status" in error
-        ? Number(error.status)
-        : 500;
-    const message = error instanceof Error ? error.message : "Failed to create brand";
-    return NextResponse.json({ error: message }, { status });
+  } catch (error: any) {
+    console.error("Failed to create brand:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to create brand" },
+      { status: error.status || 400 }
+    );
   }
 }

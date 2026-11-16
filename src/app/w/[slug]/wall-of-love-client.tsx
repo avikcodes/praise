@@ -44,16 +44,22 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
   );
 
   // Layout state: defaults to config layout, but user can toggle
-  const [layoutMode, setLayoutMode] = useState<"masonry" | "grid" | "carousel" | "single_quote" | "list">(
+  const [layoutMode, setLayoutMode] = useState<"masonry" | "grid" | "carousel" | "slider" | "video" | "audio" | "single_quote" | "list">(
     config.layout === "grid"
       ? "grid"
       : config.layout === "carousel"
-      ? "carousel"
-      : config.layout === "single_quote"
-      ? "single_quote"
-      : config.layout === "list"
-      ? "list"
-      : "masonry"
+        ? "carousel"
+        : config.layout === "slider"
+          ? "slider"
+          : config.layout === "video"
+            ? "video"
+            : config.layout === "audio"
+              ? "audio"
+              : config.layout === "single_quote"
+                ? "single_quote"
+                : config.layout === "list"
+                  ? "list"
+                  : "masonry"
   );
 
   // Search & tag filtering
@@ -127,7 +133,7 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
           workspaceId: data.workspace?.id,
           slug: data.slug,
         }),
-      }).catch(() => {});
+      }).catch(() => { });
     } catch {
       // ignore
     }
@@ -146,7 +152,7 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
         slug: data.slug,
         metadata: { target },
       }),
-    }).catch(() => {});
+    }).catch(() => { });
   };
 
   // Theme-specific styles & distinctive templates
@@ -161,56 +167,56 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
   const containerBg = isMidnight
     ? "bg-[#0B0F19] text-white"
     : isDark
-    ? "bg-ink-950 text-white"
-    : isEmerald
-    ? "bg-[#F3F8F5] text-[#123023]"
-    : isSunset
-    ? "bg-[#FFF8F5] text-[#331C14]"
-    : isMinimal
-    ? "bg-white text-black"
-    : isWarm
-    ? "bg-[#FAF7F2] text-ink-900"
-    : "bg-slate-50 text-ink-900";
+      ? "bg-ink-950 text-white"
+      : isEmerald
+        ? "bg-[#F3F8F5] text-[#123023]"
+        : isSunset
+          ? "bg-[#FFF8F5] text-[#331C14]"
+          : isMinimal
+            ? "bg-white text-black"
+            : isWarm
+              ? "bg-[#FAF7F2] text-ink-900"
+              : "bg-slate-50 text-ink-900";
 
   const cardBg = isMidnight
     ? "bg-[#111827]/90 border-indigo-900/40 text-white shadow-xl hover:border-indigo-600/60"
     : isDark
-    ? "bg-ink-900/90 border-ink-800 text-white shadow-lg hover:border-ink-700"
-    : isEmerald
-    ? "bg-white border-[#D0E5DA] text-[#123023] shadow-xs hover:border-emerald-400"
-    : isSunset
-    ? "bg-white border-[#F3DDD5] text-[#331C14] shadow-xs hover:border-rose-300"
-    : isMinimal
-    ? "bg-white border-black text-black shadow-none hover:shadow-xs"
-    : isWarm
-    ? "bg-white border-[#E9E4DB] text-ink-900 shadow-xs hover:border-brand-300"
-    : "bg-white border-slate-200 text-ink-900 shadow-xs hover:border-brand-300";
+      ? "bg-ink-900/90 border-ink-800 text-white shadow-lg hover:border-ink-700"
+      : isEmerald
+        ? "bg-white border-[#D0E5DA] text-[#123023] shadow-xs hover:border-emerald-400"
+        : isSunset
+          ? "bg-white border-[#F3DDD5] text-[#331C14] shadow-xs hover:border-rose-300"
+          : isMinimal
+            ? "bg-white border-black text-black shadow-none hover:shadow-xs"
+            : isWarm
+              ? "bg-white border-[#E9E4DB] text-ink-900 shadow-xs hover:border-brand-300"
+              : "bg-white border-slate-200 text-ink-900 shadow-xs hover:border-brand-300";
 
   const subtleText = isMidnight
     ? "text-slate-400"
     : isDark
-    ? "text-ink-400"
-    : isEmerald
-    ? "text-[#476B5A]"
-    : isSunset
-    ? "text-[#7A5345]"
-    : isMinimal
-    ? "text-neutral-500"
-    : "text-ink-500";
+      ? "text-ink-400"
+      : isEmerald
+        ? "text-[#476B5A]"
+        : isSunset
+          ? "text-[#7A5345]"
+          : isMinimal
+            ? "text-neutral-500"
+            : "text-ink-500";
 
   const borderLine = isMidnight
     ? "border-indigo-950/80"
     : isDark
-    ? "border-ink-800"
-    : isEmerald
-    ? "border-[#D0E5DA]"
-    : isSunset
-    ? "border-[#F3DDD5]"
-    : isMinimal
-    ? "border-black"
-    : isWarm
-    ? "border-[#E9E4DB]"
-    : "border-slate-200";
+      ? "border-ink-800"
+      : isEmerald
+        ? "border-[#D0E5DA]"
+        : isSunset
+          ? "border-[#F3DDD5]"
+          : isMinimal
+            ? "border-black"
+            : isWarm
+              ? "border-[#E9E4DB]"
+              : "border-slate-200";
 
   return (
     <div
@@ -360,9 +366,8 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search testimonials by name, company, or keywords..."
-              className={`w-full rounded-xl border ${borderLine} ${
-                isDark ? "bg-ink-950 text-white placeholder:text-ink-600" : "bg-warm-50/50 text-ink-900 placeholder:text-ink-400"
-              } pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500`}
+              className={`w-full rounded-xl border ${borderLine} ${isDark ? "bg-ink-950 text-white placeholder:text-ink-600" : "bg-warm-50/50 text-ink-900 placeholder:text-ink-400"
+                } pl-9 pr-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-brand-500`}
             />
           </div>
 
@@ -373,11 +378,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
                 <button
                   type="button"
                   onClick={() => setSelectedTag("all")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                    selectedTag === "all"
-                      ? "bg-brand-500 text-white shadow-2xs"
-                      : `border ${borderLine} ${subtleText} hover:bg-warm-100/50`
-                  }`}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${selectedTag === "all"
+                    ? "bg-brand-500 text-white shadow-2xs"
+                    : `border ${borderLine} ${subtleText} hover:bg-warm-100/50`
+                    }`}
                 >
                   All ({testimonials.length})
                 </button>
@@ -386,11 +390,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
                     key={tag}
                     type="button"
                     onClick={() => setSelectedTag(tag)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                      selectedTag === tag
-                        ? "bg-brand-500 text-white shadow-2xs"
-                        : `border ${borderLine} ${subtleText} hover:bg-warm-100/50`
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${selectedTag === tag
+                      ? "bg-brand-500 text-white shadow-2xs"
+                      : `border ${borderLine} ${subtleText} hover:bg-warm-100/50`
+                      }`}
                   >
                     #{tag}
                   </button>
@@ -403,11 +406,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               <button
                 type="button"
                 onClick={() => setLayoutMode("masonry")}
-                className={`p-1.5 rounded-md transition-colors ${
-                  layoutMode === "masonry"
-                    ? "bg-brand-500 text-white shadow-2xs"
-                    : `${subtleText} hover:bg-warm-100/40`
-                }`}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "masonry"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
                 title="Masonry Layout"
               >
                 <Layers size={14} />
@@ -415,11 +417,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               <button
                 type="button"
                 onClick={() => setLayoutMode("grid")}
-                className={`p-1.5 rounded-md transition-colors ${
-                  layoutMode === "grid"
-                    ? "bg-brand-500 text-white shadow-2xs"
-                    : `${subtleText} hover:bg-warm-100/40`
-                }`}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "grid"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
                 title="Grid Layout"
               >
                 <LayoutGrid size={14} />
@@ -427,11 +428,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               <button
                 type="button"
                 onClick={() => setLayoutMode("carousel")}
-                className={`p-1.5 rounded-md transition-colors ${
-                  layoutMode === "carousel"
-                    ? "bg-brand-500 text-white shadow-2xs"
-                    : `${subtleText} hover:bg-warm-100/40`
-                }`}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "carousel"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
                 title="Interactive Carousel"
               >
                 <span className="text-[10px] font-bold px-0.5">Slides</span>
@@ -439,11 +439,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               <button
                 type="button"
                 onClick={() => setLayoutMode("single_quote")}
-                className={`p-1.5 rounded-md transition-colors ${
-                  layoutMode === "single_quote"
-                    ? "bg-brand-500 text-white shadow-2xs"
-                    : `${subtleText} hover:bg-warm-100/40`
-                }`}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "single_quote"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
                 title="Spotlight Quote"
               >
                 <Quote size={14} />
@@ -451,11 +450,10 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               <button
                 type="button"
                 onClick={() => setLayoutMode("list")}
-                className={`p-1.5 rounded-md transition-colors ${
-                  layoutMode === "list"
-                    ? "bg-brand-500 text-white shadow-2xs"
-                    : `${subtleText} hover:bg-warm-100/40`
-                }`}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "list"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
                 title="Feed / List View"
               >
                 <List size={14} />
@@ -494,7 +492,7 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               </div>
             )}
           </div>
-        ) : layoutMode === "carousel" || layoutMode === "single_quote" || layoutMode === "list" ? (
+        ) : layoutMode === "carousel" || layoutMode === "slider" || layoutMode === "video" || layoutMode === "audio" || layoutMode === "single_quote" || layoutMode === "list" ? (
           <div className="py-2">
             <WidgetRenderer
               type={layoutMode}
@@ -503,8 +501,8 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
                 theme: (activeTheme === "dark" || activeTheme === "midnight"
                   ? "dark"
                   : activeTheme === "light" || activeTheme === "minimal"
-                  ? "light"
-                  : "warm"),
+                    ? "light"
+                    : "warm"),
                 accentColor: config.accentColor,
                 showRatings: config.showRatings,
                 showCompany: config.showCompany,
@@ -623,9 +621,8 @@ function TestimonialCard({
   return (
     <article
       aria-label={`Customer review by ${customer.name}`}
-      className={`${radiusClass} ${borderClass} ${cardBg} p-5 transition-all hover:shadow-md ${
-        isMasonry ? "break-inside-avoid mb-5" : ""
-      } ${isFeatured && config.showFeaturedBadge ? "ring-2 ring-brand-400/50" : ""}`}
+      className={`${radiusClass} ${borderClass} ${cardBg} p-5 transition-all hover:shadow-md ${isMasonry ? "break-inside-avoid mb-5" : ""
+        } ${isFeatured && config.showFeaturedBadge ? "ring-2 ring-brand-400/50" : ""}`}
     >
       {/* Top Header: Customer Info + Featured Badge */}
       <header className="flex items-start justify-between gap-3 mb-3">
@@ -755,9 +752,8 @@ function TestimonialCard({
               {tags.map((t, idx) => (
                 <span
                   key={idx}
-                  className={`rounded-sm px-1.5 py-0.2 font-medium ${
-                    isDark ? "bg-ink-800 text-ink-300" : "bg-warm-100 text-ink-600"
-                  }`}
+                  className={`rounded-sm px-1.5 py-0.2 font-medium ${isDark ? "bg-ink-800 text-ink-300" : "bg-warm-100 text-ink-600"
+                    }`}
                 >
                   #{t}
                 </span>

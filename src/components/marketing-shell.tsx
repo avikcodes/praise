@@ -17,6 +17,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
+    pathname.startsWith("/auth") ||
     pathname.startsWith("/p/");
 
   if (isApplicationRoute) {

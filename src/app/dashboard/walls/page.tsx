@@ -90,7 +90,10 @@ const THEMES = [
 export default function WallsOfLovePage() {
   const toast = useToast();
   const { activeWorkspace, projects } = useWorkspace();
-  const workspaceId = activeWorkspace?.id;
+  const workspaceId =
+    activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+      ? activeWorkspace.id
+      : undefined;
 
   const [walls, setWalls] = useState<WallSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);

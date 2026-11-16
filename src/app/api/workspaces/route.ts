@@ -28,6 +28,67 @@ export async function GET() {
         orderBy: { createdAt: "asc" },
       });
 
+      if (memberships.length === 0) {
+        // Ensure user has at least one real workspace in the database
+        const workspaceName = `${user.name || "My"}'s Workspace`;
+        const baseSlug = (user.name || "workspace")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "workspace";
+        const safeSuffix = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "team";
+        const slug = `${baseSlug}-${safeSuffix}`;
+
+        const existingSlug = await prisma.workspace.findUnique({ where: { slug } });
+        const finalSlug = existingSlug
+          ? `${slug}-${Math.floor(1000 + Math.random() * 9000)}`
+          : slug;
+
+        const created = await prisma.workspace.create({
+          data: {
+            name: workspaceName,
+            slug: finalSlug,
+            members: {
+              create: {
+                userId: user.id,
+                role: "OWNER",
+              },
+            },
+            projects: {
+              create: {
+                name: "Main Product Web",
+                slug: "web-app",
+                description: "Primary website and web application testimonials.",
+                color: "#7049D8",
+              },
+            },
+          },
+          include: {
+            _count: {
+              select: {
+                projects: true,
+                testimonials: true,
+                forms: true,
+                widgets: true,
+                members: true,
+              },
+            },
+          },
+        });
+
+        return NextResponse.json({
+          workspaces: [
+            {
+              id: created.id,
+              name: created.name,
+              slug: created.slug,
+              role: "OWNER",
+              counts: created._count,
+              createdAt: created.createdAt,
+            },
+          ],
+        });
+      }
+
       return NextResponse.json({
         workspaces: memberships.map((m) => ({
           id: m.workspace.id,
@@ -39,27 +100,11 @@ export async function GET() {
         })),
       });
     } catch (dbError) {
-      if (process.env.NODE_ENV !== "production") {
-        return NextResponse.json({
-          workspaces: [
-            {
-              id: "ws-default",
-              name: "Acme Corp",
-              slug: "acme-corp",
-              role: "OWNER",
-              counts: {
-                projects: 1,
-                testimonials: 0,
-                forms: 1,
-                widgets: 1,
-                members: 1,
-              },
-              createdAt: new Date().toISOString(),
-            },
-          ],
-        });
-      }
-      throw dbError;
+      console.error("Fetch workspaces error:", dbError);
+      return NextResponse.json(
+        { error: "Failed to fetch workspaces" },
+        { status: 500 },
+      );
     }
   } catch (error: unknown) {
     const status =

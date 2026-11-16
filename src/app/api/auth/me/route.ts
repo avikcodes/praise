@@ -33,14 +33,7 @@ export async function GET() {
       return NextResponse.json({
         authenticated: true,
         user,
-        workspaces: [
-          {
-            id: "ws-default",
-            name: "Acme Corp",
-            slug: "acme-corp",
-            role: "OWNER",
-          },
-        ],
+        workspaces: [],
       });
     }
   } catch (error: unknown) {

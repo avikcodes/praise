@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireWorkspaceMember, AuthError } from "@/lib/auth/guards";
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -8,8 +8,9 @@ type RouteParams = {
 
 export async function GET(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId } = await context.params;
-    await requireWorkspaceMember(workspaceId);
+    const { id: rawId } = await context.params;
+    const { workspace } = await requireWorkspaceMember(rawId);
+    const workspaceId = workspace.id;
 
     const definitions = await prisma.customerAttributeDefinition.findMany({
       where: { workspaceId },
@@ -27,7 +28,13 @@ export async function GET(request: Request, context: RouteParams) {
         order: d.order,
       })),
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("List customer attributes error:", error);
     return NextResponse.json(
       { error: "Failed to load customer attribute definitions." },
@@ -38,8 +45,9 @@ export async function GET(request: Request, context: RouteParams) {
 
 export async function POST(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId } = await context.params;
-    await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
+    const { id: rawId } = await context.params;
+    const { workspace } = await requireWorkspaceMember(rawId, ["OWNER", "ADMIN"]);
+    const workspaceId = workspace.id;
 
     const body = await request.json();
     const { name, key, type, options, description, order } = body;
@@ -105,7 +113,13 @@ export async function POST(request: Request, context: RouteParams) {
       },
       { status: 201 },
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("Create attribute definition error:", error);
     return NextResponse.json(
       { error: "Failed to create attribute definition." },

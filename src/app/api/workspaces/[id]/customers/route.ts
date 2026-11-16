@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireWorkspaceMember, AuthError } from "@/lib/auth/guards";
 import {
   displayCustomerEmail,
   formatCustomerMeta,
@@ -19,8 +19,9 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function GET(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId } = await context.params;
-    await requireWorkspaceMember(workspaceId);
+    const { id: rawId } = await context.params;
+    const { workspace } = await requireWorkspaceMember(rawId);
+    const workspaceId = workspace.id;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
@@ -223,7 +224,13 @@ export async function GET(request: Request, context: RouteParams) {
       customers: formatted,
       total: formatted.length,
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("Customers list error:", error);
     return NextResponse.json(
       { error: "Failed to load customers" },
@@ -234,8 +241,9 @@ export async function GET(request: Request, context: RouteParams) {
 
 export async function POST(request: Request, context: RouteParams) {
   try {
-    const { id: workspaceId } = await context.params;
-    const member = await requireWorkspaceMember(workspaceId, ["OWNER", "ADMIN"]);
+    const { id: rawId } = await context.params;
+    const member = await requireWorkspaceMember(rawId, ["OWNER", "ADMIN"]);
+    const workspaceId = member.workspace.id;
 
     const body = await request.json();
     const {
@@ -367,7 +375,13 @@ export async function POST(request: Request, context: RouteParams) {
       },
       { status: 201 },
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
     console.error("Create customer error:", error);
     return NextResponse.json(
       { error: "Failed to create customer" },

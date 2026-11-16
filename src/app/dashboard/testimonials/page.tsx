@@ -537,7 +537,10 @@ function TestimonialsContent() {
   };
 
   const toast = useToast();
-  const workspaceId = activeWorkspace?.id;
+  const workspaceId =
+    activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+      ? activeWorkspace.id
+      : undefined;
 
   // Helper to update URL params cleanly without resetting other filter states
   const updateQueryParam = useCallback(

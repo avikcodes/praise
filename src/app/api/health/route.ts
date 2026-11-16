@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
+import { withDatabaseRetry } from "@/lib/db/retry";
 import fs from "fs/promises";
 import path from "path";
 
@@ -20,7 +21,11 @@ export async function GET() {
   // 1. Check PostgreSQL Database Connectivity
   try {
     const dbStart = Date.now();
-    await prisma.$queryRaw`SELECT 1`;
+    await withDatabaseRetry(() => prisma.$queryRaw`SELECT 1`, {
+      maxRetries: 2,
+      initialDelayMs: 300,
+      operationName: "database health probe",
+    });
     dbLatencyMs = Date.now() - dbStart;
   } catch {
     dbStatus = "disconnected";

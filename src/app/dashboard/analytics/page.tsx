@@ -42,7 +42,10 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     let isMounted = true;
-    const workspaceId = activeWorkspace?.id;
+    const workspaceId =
+      activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+        ? activeWorkspace.id
+        : undefined;
     if (!workspaceId) return;
 
     async function loadData() {

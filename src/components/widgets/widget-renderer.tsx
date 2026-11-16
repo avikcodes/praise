@@ -4,7 +4,11 @@ import { useMemo } from "react";
 import { WidgetDisplayType } from "@/types/widgets";
 import { WidgetRendererProps } from "./types";
 import { WidgetGrid } from "./widget-grid";
+import { WidgetMasonry } from "./widget-masonry";
 import { WidgetCarousel } from "./widget-carousel";
+import { WidgetSlider } from "./widget-slider";
+import { WidgetVideo } from "./widget-video";
+import { WidgetAudio } from "./widget-audio";
 import { WidgetSingleQuote } from "./widget-single-quote";
 import { WidgetList } from "./widget-list";
 import { WidgetSkeleton } from "./widget-skeletons";
@@ -14,6 +18,27 @@ import { getFontFamilyCss } from "@/lib/branding/utils";
 export function normalizeWidgetType(type: string): WidgetDisplayType {
   const clean = (type || "").toLowerCase().trim();
   if (clean === "carousel") return "carousel";
+  if (clean === "slider" || clean === "slideshow") return "slider";
+  if (clean === "masonry" || clean === "waterfall") return "masonry";
+  if (
+    clean === "video" ||
+    clean === "video_grid" ||
+    clean === "video-grid" ||
+    clean === "video_testimonial" ||
+    clean === "video-testimonial"
+  ) {
+    return "video";
+  }
+  if (
+    clean === "audio" ||
+    clean === "voice" ||
+    clean === "audio_player" ||
+    clean === "audio-player" ||
+    clean === "audio_testimonial" ||
+    clean === "audio-testimonial"
+  ) {
+    return "audio";
+  }
   if (
     clean === "single_quote" ||
     clean === "single-quote" ||
@@ -128,8 +153,40 @@ export function WidgetRenderer({
         />
       )}
 
+      {normType === "masonry" && (
+        <WidgetMasonry
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
       {normType === "carousel" && (
         <WidgetCarousel
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "slider" && (
+        <WidgetSlider
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "video" && (
+        <WidgetVideo
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "audio" && (
+        <WidgetAudio
           testimonials={approvedTestimonials}
           config={config}
           onTestimonialClick={onTestimonialClick}
@@ -179,4 +236,3 @@ export function WidgetRenderer({
     </div>
   );
 }
-

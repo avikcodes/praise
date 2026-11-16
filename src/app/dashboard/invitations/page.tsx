@@ -219,7 +219,10 @@ const COMMON_TIMEZONES = [
 
 export default function InvitationsPage() {
   const { activeWorkspace } = useWorkspace();
-  const workspaceId = activeWorkspace?.id;
+  const workspaceId =
+    activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+      ? activeWorkspace.id
+      : undefined;
   const toast = useToast();
 
   const [channelTab, setChannelTab] = useState<"email" | "sms">("email");

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireWorkspaceMember, AuthError } from "@/lib/auth/guards";
+import { withDatabaseRetry, isTransientConnectionError } from "@/lib/db/retry";
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -17,7 +18,10 @@ export async function GET(request: Request, context: RouteParams) {
     fourteenDaysAgo.setDate(now.getDate() - 13);
     fourteenDaysAgo.setHours(0, 0, 0, 0);
 
-    const [
+    // Fetch overview data using bounded retry for transient connection issues.
+    // Partition into two logical query stages (aggregates & counts, then records & trends)
+    // to reduce peak connection pool contention against serverless PostgreSQL poolers.
+    const {
       statusCounts,
       ratingAggregate,
       totalForms,
@@ -28,90 +32,121 @@ export async function GET(request: Request, context: RouteParams) {
       trendTestimonials,
       recentForms,
       recentProjects,
-    ] = await Promise.all([
-      // Group testimonials by status
-      prisma.testimonial.groupBy({
-        by: ["status"],
-        where: { workspaceId },
-        _count: { _all: true },
-      }),
-      // Average rating
-      prisma.testimonial.aggregate({
-        where: {
-          workspaceId,
-          rating: { not: null },
-        },
-        _avg: { rating: true },
-      }),
-      // Resource counts
-      prisma.collectionForm.count({ where: { workspaceId } }),
-      prisma.project.count({ where: { workspaceId } }),
-      prisma.customer.count({ where: { workspaceId } }),
-      prisma.widget.count({ where: { workspaceId } }),
-      // Recent testimonials with relations
-      prisma.testimonial.findMany({
-        where: { workspaceId },
-        orderBy: { submittedAt: "desc" },
-        take: 6,
-        include: {
-          customer: true,
-          form: {
-            select: { id: true, title: true, slug: true },
-          },
-          project: {
-            select: { id: true, name: true, slug: true, color: true },
-          },
-          mediaAssets: {
-            select: {
-              id: true,
-              type: true,
-              url: true,
-              mimeType: true,
-              fileSizeBytes: true,
-              durationSeconds: true,
+    } = await withDatabaseRetry(
+      async () => {
+        // Stage 1: Aggregate metric counts
+        const [
+          statusCounts,
+          ratingAggregate,
+          totalForms,
+          totalProjects,
+          totalCustomers,
+          totalWidgets,
+        ] = await Promise.all([
+          // Group testimonials by status
+          prisma.testimonial.groupBy({
+            by: ["status"],
+            where: { workspaceId },
+            _count: { _all: true },
+          }),
+          // Average rating
+          prisma.testimonial.aggregate({
+            where: {
+              workspaceId,
+              rating: { not: null },
             },
-          },
-        },
-      }),
-      // Testimonials within the 14-day window for trends
-      prisma.testimonial.findMany({
-        where: {
-          workspaceId,
-          submittedAt: { gte: fourteenDaysAgo },
-        },
-        select: {
-          id: true,
-          status: true,
-          submittedAt: true,
-        },
-      }),
-      // Recent forms for activity feed
-      prisma.collectionForm.findMany({
-        where: { workspaceId },
-        orderBy: { createdAt: "desc" },
-        take: 4,
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          isPublished: true,
-          createdAt: true,
-        },
-      }),
-      // Recent projects for activity feed
-      prisma.project.findMany({
-        where: { workspaceId },
-        orderBy: { createdAt: "desc" },
-        take: 3,
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          color: true,
-          createdAt: true,
-        },
-      }),
-    ]);
+            _avg: { rating: true },
+          }),
+          // Resource counts
+          prisma.collectionForm.count({ where: { workspaceId } }),
+          prisma.project.count({ where: { workspaceId } }),
+          prisma.customer.count({ where: { workspaceId } }),
+          prisma.widget.count({ where: { workspaceId } }),
+        ]);
+
+        // Stage 2: Recent records and submission trend data
+        const [recentTestimonials, trendTestimonials, recentForms, recentProjects] =
+          await Promise.all([
+            // Recent testimonials with relations
+            prisma.testimonial.findMany({
+              where: { workspaceId },
+              orderBy: { submittedAt: "desc" },
+              take: 6,
+              include: {
+                customer: true,
+                form: {
+                  select: { id: true, title: true, slug: true },
+                },
+                project: {
+                  select: { id: true, name: true, slug: true, color: true },
+                },
+                mediaAssets: {
+                  select: {
+                    id: true,
+                    type: true,
+                    url: true,
+                    mimeType: true,
+                    fileSizeBytes: true,
+                    durationSeconds: true,
+                  },
+                },
+              },
+            }),
+            // Testimonials within the 14-day window for trends
+            prisma.testimonial.findMany({
+              where: {
+                workspaceId,
+                submittedAt: { gte: fourteenDaysAgo },
+              },
+              select: {
+                id: true,
+                status: true,
+                submittedAt: true,
+              },
+            }),
+            // Recent forms for activity feed
+            prisma.collectionForm.findMany({
+              where: { workspaceId },
+              orderBy: { createdAt: "desc" },
+              take: 4,
+              select: {
+                id: true,
+                title: true,
+                slug: true,
+                isPublished: true,
+                createdAt: true,
+              },
+            }),
+            // Recent projects for activity feed
+            prisma.project.findMany({
+              where: { workspaceId },
+              orderBy: { createdAt: "desc" },
+              take: 3,
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                color: true,
+                createdAt: true,
+              },
+            }),
+          ]);
+
+        return {
+          statusCounts,
+          ratingAggregate,
+          totalForms,
+          totalProjects,
+          totalCustomers,
+          totalWidgets,
+          recentTestimonials,
+          trendTestimonials,
+          recentForms,
+          recentProjects,
+        };
+      },
+      { operationName: "workspace overview metrics", maxRetries: 2, initialDelayMs: 600 },
+    );
 
     // Format counts
     const counts = {
@@ -234,10 +269,24 @@ export async function GET(request: Request, context: RouteParams) {
       recentActivity,
       submissionTrends,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Workspace overview error:", error);
+
+    if (error instanceof AuthError || error?.status === 401 || error?.status === 403) {
+      return NextResponse.json(
+        { error: error.message || "Unauthorized" },
+        { status: error.status || 401 },
+      );
+    }
+
+    const isConnectionError = isTransientConnectionError(error);
     return NextResponse.json(
-      { error: "Failed to load workspace overview metrics" },
+      {
+        error: isConnectionError
+          ? "Database server is temporarily unreachable. Please retry shortly."
+          : "Failed to load workspace overview metrics",
+        code: error?.code || (isConnectionError ? "P1001" : "DATABASE_ERROR"),
+      },
       { status: 500 },
     );
   }

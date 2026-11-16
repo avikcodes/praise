@@ -1,7 +1,11 @@
 export * from "./types";
 export * from "./widget-renderer";
 export * from "./widget-grid";
+export * from "./widget-masonry";
 export * from "./widget-carousel";
+export * from "./widget-slider";
+export * from "./widget-video";
+export * from "./widget-audio";
 export * from "./widget-single-quote";
 export * from "./widget-list";
 export * from "./widget-media-player";
@@ -10,4 +14,3 @@ export * from "./widget-rating";
 export * from "./widget-skeletons";
 export * from "./widget-empty-state";
 export * from "./embed-resize-listener";
-

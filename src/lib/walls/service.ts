@@ -2,6 +2,7 @@ import { prisma } from "../db/client.ts";
 import { sanitizePublicSlug } from "../seo/metadata.ts";
 import { parseWidgetConfig } from "../widgets/utils.ts";
 import { parseCustomerMeta } from "../customers/utils.ts";
+import { SITE_URL } from "../site.ts";
 import type {
   PublicWallOfLoveData,
   PublicTestimonialCard,
@@ -137,6 +138,10 @@ export async function resolvePublicWall(
         },
         workspace: {
           select: { id: true, name: true, slug: true, logoUrl: true },
+        },
+        customDomains: {
+          where: { status: "ACTIVE" },
+          select: { domain: true, status: true, canonicalRedirect: true },
         },
       },
     });
@@ -296,6 +301,11 @@ export async function resolvePublicWall(
           .catch(() => {});
       }
 
+      const activeCustomDomain = (wall.customDomains || [])[0];
+      const canonicalUrl = activeCustomDomain
+        ? `https://${activeCustomDomain.domain}/`
+        : `${SITE_URL}/w/${wall.slug}`;
+
       return {
         wallData: {
           widgetId: wall.id,
@@ -309,6 +319,10 @@ export async function resolvePublicWall(
           totalApproved: publicTestimonials.length,
           testimonials: publicTestimonials,
           isPublished: wall.isPublished,
+          canonicalUrl,
+          customDomain: activeCustomDomain
+            ? { domain: activeCustomDomain.domain, status: activeCustomDomain.status }
+            : null,
         },
         source: "WALL_OF_LOVE",
         wallRecord: wall,

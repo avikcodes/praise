@@ -1,6 +1,6 @@
 import { WorkspaceRole } from "@prisma/client";
-import { prisma } from "@/lib/db/client";
-import { getSessionUser } from "@/lib/auth/session";
+import { prisma } from "../db/client.ts";
+import { getSessionUser } from "./session.ts";
 
 export class AuthError extends Error {
   status: number;
@@ -44,6 +44,36 @@ async function getDevFallbackUser() {
           createdAt: true,
         },
       });
+
+      // Ensure dev user has a real workspace in the database
+      const existingMembership = await prisma.workspaceMember.findFirst({
+        where: { userId: DEV_FALLBACK_USER.id },
+        include: { workspace: true },
+      });
+
+      if (!existingMembership) {
+        await prisma.workspace.create({
+          data: {
+            name: "Local Dev Workspace",
+            slug: "dev-workspace",
+            members: {
+              create: {
+                userId: DEV_FALLBACK_USER.id,
+                role: "OWNER",
+              },
+            },
+            projects: {
+              create: {
+                name: "Main Product Web",
+                slug: "web-app",
+                description: "Primary website and web application testimonials.",
+                color: "#7049D8",
+              },
+            },
+          },
+        });
+      }
+
       return user;
     } catch {
       return DEV_FALLBACK_USER;
@@ -73,8 +103,12 @@ export async function requireAuth() {
  * Prevents cross-workspace data access by checking that the authenticated
  * user holds active membership in the specified workspace.
  *
- * In local development (non-production), allows testing without blocking if unseeded.
- * Throws AuthError(403) if the user does not belong to the workspace or lacks the role.
+ * If the legacy alias "ws-default" or "default" is provided, safely resolves
+ * to the authenticated user's actual active workspace from the database.
+ * Never resolves to an arbitrary user's workspace.
+ *
+ * Throws AuthError(404) if the workspace does not exist.
+ * Throws AuthError(403) if the user does not belong to the workspace or lacks the required role.
  */
 export async function requireWorkspaceMember(
   workspaceId: string,
@@ -82,46 +116,81 @@ export async function requireWorkspaceMember(
 ) {
   const user = await requireAuth();
 
-  try {
-    const membership = await prisma.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: {
-          workspaceId,
-          userId: user.id,
-        },
-      },
+  if (!workspaceId || typeof workspaceId !== "string" || !workspaceId.trim()) {
+    throw new AuthError("Workspace ID is required", 400);
+  }
+
+  const normalizedWsId = workspaceId.trim();
+  const isDefaultAlias =
+    normalizedWsId === "ws-default" ||
+    normalizedWsId === "default" ||
+    normalizedWsId.startsWith("ws-default");
+
+  if (isDefaultAlias) {
+    // Resolve to the authenticated user's actual active workspace
+    let membership = await prisma.workspaceMember.findFirst({
+      where: { userId: user.id },
       include: {
         workspace: true,
       },
+      orderBy: { createdAt: "asc" },
     });
 
     if (!membership) {
-      if (process.env.NODE_ENV !== "production") {
-        return {
-          user,
-          workspace: {
-            id: workspaceId,
-            name: "Default Workspace",
-            slug: "default",
-            logoUrl: null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          role: "OWNER" as WorkspaceRole,
-        };
+      // Check if user exists in User table
+      const dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+      });
+      if (!dbUser) {
+        throw new AuthError("User not found", 401);
       }
-      throw new AuthError("Access denied: You are not a member of this workspace", 403);
+
+      // Provision an initial workspace for this user idempotently
+      const workspaceName = `${user.name || "My"}'s Workspace`;
+      const baseSlug = (user.name || "workspace")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "workspace";
+      const safeSuffix = user.id.replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "team";
+      const slug = `${baseSlug}-${safeSuffix}`;
+
+      const existingSlug = await prisma.workspace.findUnique({ where: { slug } });
+      const finalSlug = existingSlug
+        ? `${slug}-${Math.floor(1000 + Math.random() * 9000)}`
+        : slug;
+
+      const createdWorkspace = await prisma.workspace.create({
+        data: {
+          name: workspaceName,
+          slug: finalSlug,
+          members: {
+            create: {
+              userId: user.id,
+              role: "OWNER",
+            },
+          },
+          projects: {
+            create: {
+              name: "Main Product Web",
+              slug: "web-app",
+              description: "Primary website and web application testimonials.",
+              color: "#7049D8",
+            },
+          },
+        },
+        include: {
+          members: {
+            where: { userId: user.id },
+            include: { workspace: true },
+          },
+        },
+      });
+
+      membership = createdWorkspace.members[0];
     }
 
     if (allowedRoles && allowedRoles.length > 0) {
       if (!allowedRoles.includes(membership.role)) {
-        if (process.env.NODE_ENV !== "production") {
-          return {
-            user,
-            workspace: membership.workspace,
-            role: "OWNER" as WorkspaceRole,
-          };
-        }
         throw new AuthError(
           `Insufficient permissions: Required role ${allowedRoles.join(" or ")}, but you have ${membership.role}`,
           403,
@@ -134,26 +203,49 @@ export async function requireWorkspaceMember(
       workspace: membership.workspace,
       role: membership.role,
     };
-  } catch (error) {
-    if (error instanceof AuthError) {
-      throw error;
-    }
-    if (process.env.NODE_ENV !== "production") {
-      return {
-        user,
-        workspace: {
-          id: workspaceId,
-          name: "Default Workspace",
-          slug: "default",
-          logoUrl: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        role: "OWNER" as WorkspaceRole,
-      };
-    }
-    throw error;
   }
+
+  // Canonical workspace lookup
+  const membership = await prisma.workspaceMember.findUnique({
+    where: {
+      workspaceId_userId: {
+        workspaceId: normalizedWsId,
+        userId: user.id,
+      },
+    },
+    include: {
+      workspace: true,
+    },
+  });
+
+  if (!membership) {
+    // Check if the workspace exists at all in the database
+    const workspaceExists = await prisma.workspace.findUnique({
+      where: { id: normalizedWsId },
+      select: { id: true },
+    });
+
+    if (!workspaceExists) {
+      throw new AuthError("Workspace not found", 404);
+    }
+
+    throw new AuthError("Access denied: You are not a member of this workspace", 403);
+  }
+
+  if (allowedRoles && allowedRoles.length > 0) {
+    if (!allowedRoles.includes(membership.role)) {
+      throw new AuthError(
+        `Insufficient permissions: Required role ${allowedRoles.join(" or ")}, but you have ${membership.role}`,
+        403,
+      );
+    }
+  }
+
+  return {
+    user,
+    workspace: membership.workspace,
+    role: membership.role,
+  };
 }
 
 /**

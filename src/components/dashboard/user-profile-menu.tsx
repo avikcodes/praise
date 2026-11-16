@@ -8,6 +8,7 @@ import {
   Settings,
 } from "lucide-react";
 import { useToast } from "@/components/dashboard/toast-context";
+import { authClient } from "@/lib/auth/client";
 
 export function UserProfileMenu() {
   const [open, setOpen] = useState(false);
@@ -80,9 +81,15 @@ export function UserProfileMenu() {
 
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               setOpen(false);
+              try {
+                await authClient.signOut();
+              } catch {
+                // Ignore if offline
+              }
               toast.info("Signed out", "You have been logged out of your session.");
+              window.location.href = "/auth/sign-in";
             }}
             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 transition-colors text-left"
           >

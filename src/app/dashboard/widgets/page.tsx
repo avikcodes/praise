@@ -33,7 +33,10 @@ import {
 export default function WidgetsPage() {
   const { activeWorkspace } = useWorkspace();
   const toast = useToast();
-  const workspaceId = activeWorkspace?.id;
+  const workspaceId =
+    activeWorkspace && !activeWorkspace.id.startsWith("ws-default")
+      ? activeWorkspace.id
+      : undefined;
 
   const [widgets, setWidgets] = useState<WidgetDetail[]>([]);
   const [isLoading, setIsLoading] = useState(true);

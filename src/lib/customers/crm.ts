@@ -72,23 +72,52 @@ export type CustomerStageKey =
 
 /**
  * Ensures standard default stages exist for a workspace.
+ * Concurrency-safe and idempotent:
+ * - Validates workspace ID and confirms the Workspace record exists in the database.
+ * - Uses Prisma upsert on compound unique key [workspaceId, key] to safely handle
+ *   concurrent initialization requests without P2002 errors or duplicates.
+ * - Never creates stages for nonexistent workspaces (preventing P2003 foreign key errors).
  */
 export async function ensureDefaultStages(workspaceId: string) {
+  if (!workspaceId || typeof workspaceId !== "string" || !workspaceId.trim()) {
+    throw new Error("Invalid workspace ID provided to ensureDefaultStages.");
+  }
+
+  const cleanWorkspaceId = workspaceId.trim();
+
+  // 1. Verify workspace existence in the database before any stage operations
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: cleanWorkspaceId },
+    select: { id: true },
+  });
+
+  if (!workspace) {
+    throw new Error(`Workspace not found: ${cleanWorkspaceId}`);
+  }
+
+  // 2. Fetch existing stages for this workspace
   const existing = await prisma.customerStage.findMany({
-    where: { workspaceId },
+    where: { workspaceId: cleanWorkspaceId },
     orderBy: { order: "asc" },
   });
 
-  if (existing.length > 0) {
+  // Fast path: if all standard stages already exist, return them immediately
+  if (existing.length >= DEFAULT_CUSTOMER_STAGES.length) {
     return existing;
   }
 
-  // Seed default stages
-  const createdStages = [];
+  // 3. Concurrency-safe upsert of all default stages on compound unique key [workspaceId, key]
   for (const s of DEFAULT_CUSTOMER_STAGES) {
-    const stage = await prisma.customerStage.create({
-      data: {
-        workspaceId,
+    await prisma.customerStage.upsert({
+      where: {
+        workspaceId_key: {
+          workspaceId: cleanWorkspaceId,
+          key: s.key,
+        },
+      },
+      update: {}, // Preserve existing stage attributes if already created
+      create: {
+        workspaceId: cleanWorkspaceId,
         key: s.key,
         name: s.name,
         description: s.description,
@@ -98,10 +127,12 @@ export async function ensureDefaultStages(workspaceId: string) {
         isSystem: s.isSystem,
       },
     });
-    createdStages.push(stage);
   }
 
-  return createdStages;
+  return await prisma.customerStage.findMany({
+    where: { workspaceId: cleanWorkspaceId },
+    orderBy: { order: "asc" },
+  });
 }
 
 /**

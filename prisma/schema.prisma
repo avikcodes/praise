@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -123,7 +124,7 @@ enum VideoResolutionProfile {
 model User {
   id           String            @id @default(cuid())
   email        String            @unique
-  passwordHash String
+  passwordHash String?
   name         String
   avatarUrl    String?
   createdAt    DateTime          @default(now())
@@ -200,6 +201,7 @@ model Workspace {
   platformConnections PlatformConnection[]
   platformSyncLogs PlatformSyncLog[]
   wallsOfLove WallOfLove[]
+  customDomains CustomDomain[]
 
   @@index([slug])
   @@map("workspaces")
@@ -227,18 +229,33 @@ model WorkspaceMember {
 // -----------------------------------------------------------------------------
 
 model Brand {
-  id          String    @id @default(cuid())
-  workspaceId String
-  name        String
-  slug        String
-  logoUrl     String?
-  accentColor String?   @default("#7049D8")
-  websiteUrl  String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                     String         @id @default(cuid())
+  workspaceId            String
+  name                   String
+  slug                   String
+  logoUrl                String?
+  accentColor            String?        @default("#7049D8")
+  websiteUrl             String?
+  tagline                String?
+  description            String?
+  theme                  String         @default("WARM") // WARM, LIGHT, DARK, MIDNIGHT, EMERALD, SUNSET, MINIMAL
+  isPublished            Boolean        @default(true)
+  selectedWallIds        String?        // JSON array of WallOfLove IDs to showcase
+  featuredTestimonialIds String?        // JSON array of specific testimonial IDs, or empty for automatic
+  ctaEnabled             Boolean        @default(true)
+  ctaLabel               String?        @default("Visit Website")
+  ctaUrl                 String?
+  ctaSecondaryEnabled    Boolean        @default(false)
+  ctaSecondaryLabel      String?        @default("Share Praise")
+  ctaSecondaryUrl        String?
+  socialLinksJson        String?        // JSON: { twitter, linkedin, github, youtube, etc. }
+  viewsCount             Int            @default(0)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  projects    Project[]
+  workspace              Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  projects               Project[]
+  customDomains          CustomDomain[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1461,14 +1478,50 @@ model WallOfLove {
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
-  workspace              Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project                Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  workspace              Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  customDomains          CustomDomain[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
   @@index([projectId])
   @@index([slug])
   @@map("walls_of_love")
+}
+
+// -----------------------------------------------------------------------------
+// 19. Custom Domains & Hostname Routing
+// -----------------------------------------------------------------------------
+
+model CustomDomain {
+  id                 String       @id @default(cuid())
+  workspaceId        String
+  domain             String       @unique // e.g. "reviews.acme.com" - strictly unique across all workspaces!
+  targetType         String       // "WALL_OF_LOVE" | "BRAND_PAGE"
+  wallOfLoveId       String?
+  brandId            String?
+  status             String       @default("PENDING_VERIFICATION") // PENDING_VERIFICATION, VERIFIED, ACTIVE, FAILED, MISCONFIGURED
+  verificationToken  String       // e.g. "praise-verify-xxxxx"
+  verificationMethod String       @default("TXT") // "TXT" or "CNAME"
+  cnameTarget        String?      // e.g. "cname.praise.app" or configured CANONICAL_CNAME_TARGET
+  verifiedAt         DateTime?
+  lastCheckedAt      DateTime?
+  errorMessage       String?
+  tlsProvisioning    String       @default("REVERSE_PROXY") // "REVERSE_PROXY", "CLOUDFLARE_SSL", "MANUAL_TLS"
+  canonicalRedirect  Boolean      @default(true)
+  viewsCount         Int          @default(0)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  workspace          Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  wallOfLove         WallOfLove?  @relation(fields: [wallOfLoveId], references: [id], onDelete: SetNull)
+  brand              Brand?       @relation(fields: [brandId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([domain])
+  @@index([wallOfLoveId])
+  @@index([brandId])
+  @@map("custom_domains")
 }
 
 

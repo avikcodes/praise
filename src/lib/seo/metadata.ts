@@ -181,6 +181,7 @@ export type WallOfLoveMetadataInput = {
     slug?: string;
     logoUrl?: string | null;
   };
+  canonicalUrl?: string | null;
 };
 
 /**
@@ -209,7 +210,7 @@ export function buildWallOfLoveMetadata(
     customDescription ||
     `Read authentic reviews, ratings, and customer testimonials for ${orgName}. Discover genuine experiences and feedback from real users.`;
 
-  const canonicalUrl = `${SITE_URL}/w/${cleanSlug}`;
+  const canonicalUrl = wall.canonicalUrl || `${SITE_URL}/w/${cleanSlug}`;
 
   const previewImageUrl = toAbsoluteUrl(
     customLogoUrl || project?.logoUrl || workspace.logoUrl
@@ -327,7 +328,7 @@ export function generateWallOfLoveJsonLd(
   testimonials: WallTestimonialSummary[]
 ) {
   const cleanSlug = sanitizePublicSlug(wall.slug);
-  const canonicalUrl = `${SITE_URL}/w/${cleanSlug}`;
+  const canonicalUrl = wall.canonicalUrl || `${SITE_URL}/w/${cleanSlug}`;
   const orgName = wall.project?.name || wall.workspace.name;
   const title = wall.title || `${orgName} Wall of Love`;
   const description =
@@ -386,4 +387,128 @@ export function generateWallOfLoveJsonLd(
     },
   };
 }
+
+export type BrandMetadataInput = {
+  name: string;
+  slug: string;
+  tagline?: string | null;
+  description?: string | null;
+  logoUrl?: string | null;
+  websiteUrl?: string | null;
+  workspace: {
+    name: string;
+    logoUrl?: string | null;
+  };
+  canonicalUrl?: string | null;
+  featuredTestimonials?: Array<{
+    id: string;
+    content: string;
+    rating?: number | null;
+    submittedAt: string;
+    customer: {
+      name: string;
+      company?: string | null;
+    };
+  }>;
+};
+
+/**
+ * Generates SEO metadata for a public Brand Profile page.
+ */
+export function buildBrandPageMetadata(
+  brand: BrandMetadataInput | null,
+  rawSlug: string
+): Metadata {
+  const cleanSlug = sanitizePublicSlug(rawSlug);
+
+  if (!brand) {
+    return {
+      title: "Brand Not Found — Praise",
+      description: "The requested brand profile does not exist or may have been unlinked.",
+      robots: ROBOTS_DIRECTIVES.noindex,
+    };
+  }
+
+  const { name, tagline, description: customDescription, logoUrl, workspace, canonicalUrl: explicitCanonical } = brand;
+  const pageTitle = tagline
+    ? `${name} — ${tagline} | Reviews & Customer Proof`
+    : `${name} — Verified Customer Reviews & Wall of Love | ${SITE_NAME}`;
+
+  const description =
+    customDescription ||
+    `Discover verified customer testimonials, product reviews, and social proof for ${name}. Real stories from verified users.`;
+
+  const canonicalUrl = explicitCanonical || `${SITE_URL}/b/${cleanSlug}`;
+  const previewImageUrl = toAbsoluteUrl(logoUrl || workspace.logoUrl);
+
+  return {
+    title: pageTitle,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    robots: ROBOTS_DIRECTIVES.indexable,
+    openGraph: {
+      type: "website",
+      locale: "en_US",
+      siteName: SITE_NAME,
+      url: canonicalUrl,
+      title: pageTitle,
+      description,
+      images: [
+        {
+          url: previewImageUrl,
+          alt: `${name} Brand Profile`,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: pageTitle,
+      description,
+      images: [previewImageUrl],
+    },
+  };
+}
+
+/**
+ * Generates Schema.org Brand & Organization JSON-LD structured data for brand profiles.
+ */
+export function generateBrandJsonLd(brand: BrandMetadataInput) {
+  const cleanSlug = sanitizePublicSlug(brand.slug);
+  const canonicalUrl = brand.canonicalUrl || `${SITE_URL}/b/${cleanSlug}`;
+  const testimonials = brand.featuredTestimonials || [];
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "Brand",
+    "@id": `${canonicalUrl}#brand`,
+    name: brand.name,
+    description: brand.description || brand.tagline || `Customer reviews for ${brand.name}`,
+    url: brand.websiteUrl || canonicalUrl,
+    ...(brand.logoUrl ? { logo: toAbsoluteUrl(brand.logoUrl) } : {}),
+    review: testimonials.map((t) => ({
+      "@type": "Review",
+      url: `${SITE_URL}/t/${t.id}`,
+      datePublished: t.submittedAt,
+      reviewBody: t.content,
+      author: {
+        "@type": "Person",
+        name: t.customer.name,
+        ...(t.customer.company
+          ? { worksFor: { "@type": "Organization", name: t.customer.company } }
+          : {}),
+      },
+      reviewRating: t.rating
+        ? {
+            "@type": "Rating",
+            ratingValue: t.rating,
+            bestRating: 5,
+            worstRating: 1,
+          }
+        : undefined,
+    })),
+  };
+}
+
 
