@@ -95,7 +95,8 @@ export function getDeploymentCnameTarget(): string {
   return (
     process.env.CUSTOM_DOMAIN_CNAME_TARGET ||
     process.env.NEXT_PUBLIC_APP_DOMAIN ||
-    "cname.praise.app"
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+    (process.env.VERCEL_URL ? "cname.vercel-dns.com" : "cname.praise.app")
   );
 }
 
@@ -399,24 +400,43 @@ export async function verifyCustomDomain(
 
   const challengeHost = `_praise-challenge.${domainRecord.domain}`;
   const targetCname = (domainRecord.cnameTarget || getDeploymentCnameTarget()).toLowerCase();
+  const token = domainRecord.verificationToken.trim();
   let verified = false;
-  let reason = "";
+  let verificationMethod = "NONE";
 
-  // 1. Check TXT record
+  // 1. Check TXT record on challenge host: _praise-challenge.<domain>
   try {
     const txtRecords = await resolver.resolveTxt(challengeHost);
     for (const chunkGroup of txtRecords) {
-      const fullTxt = chunkGroup.join("");
-      if (fullTxt.trim() === domainRecord.verificationToken.trim()) {
+      const fullTxt = chunkGroup.join("").trim();
+      if (fullTxt === token || fullTxt.includes(token)) {
         verified = true;
+        verificationMethod = "TXT";
         break;
       }
     }
-  } catch (err: any) {
-    // TXT lookup error, proceed to check CNAME
+  } catch {
+    // Challenge host lookup failed, proceed to direct domain TXT check
   }
 
-  // 2. Check CNAME record if TXT didn't match
+  // 1b. Check TXT record on domain root / subdomain directly
+  if (!verified) {
+    try {
+      const rootTxtRecords = await resolver.resolveTxt(domainRecord.domain);
+      for (const chunkGroup of rootTxtRecords) {
+        const fullTxt = chunkGroup.join("").trim();
+        if (fullTxt === token || fullTxt.includes(token)) {
+          verified = true;
+          verificationMethod = "TXT";
+          break;
+        }
+      }
+    } catch {
+      // Direct domain TXT lookup failed
+    }
+  }
+
+  // 2. Check CNAME record
   if (!verified) {
     try {
       const cnames = await resolver.resolveCname(domainRecord.domain);
@@ -425,13 +445,16 @@ export async function verifyCustomDomain(
         if (
           cleanCname === targetCname ||
           cleanCname.includes("praise.app") ||
-          cleanCname === domainRecord.verificationToken
+          cleanCname.includes("vercel-dns.com") ||
+          cleanCname.includes("vercel.app") ||
+          cleanCname === token
         ) {
           verified = true;
+          verificationMethod = "CNAME";
           break;
         }
       }
-    } catch (err: any) {
+    } catch {
       // CNAME lookup error
     }
   }
@@ -455,11 +478,11 @@ export async function verifyCustomDomain(
       success: true,
       verified: true,
       status: "ACTIVE",
-      message: `Domain ${domainRecord.domain} has been successfully verified and activated!`,
+      message: `Domain ${domainRecord.domain} has been successfully verified via ${verificationMethod} and activated!`,
       domain: updated,
     };
   } else {
-    reason = `DNS challenge verification failed. Could not find matching TXT record on "${challengeHost}" with value "${domainRecord.verificationToken}" or valid CNAME pointing to "${targetCname}".`;
+    const reason = `DNS challenge verification failed for "${domainRecord.domain}". Checked TXT records on "${challengeHost}" and "${domainRecord.domain}" (expected token "${domainRecord.verificationToken}"), and CNAME pointer (expected target "${targetCname}" or Vercel DNS). If you recently added these DNS records, please allow a few minutes for DNS propagation and try again.`;
     const updated = await dbClient.customDomain.update({
       where: { id: domainId },
       data: {
@@ -551,4 +574,26 @@ export async function resolveCustomDomainTarget(
     wallOfLove: domainRecord.wallOfLove,
     brand: domainRecord.brand,
   };
+}
+
+/**
+ * Retrieves the raw CustomDomain record with related workspace information
+ * regardless of whether the domain is currently ACTIVE, PENDING, or FAILED.
+ * Used by custom domain diagnostic rendering.
+ */
+export async function getCustomDomainDetails(
+  hostname: string,
+  dbClient: any = prisma
+) {
+  const clean = normalizeDomain(hostname);
+  if (!clean || !dbClient.customDomain) return null;
+
+  return dbClient.customDomain.findUnique({
+    where: { domain: clean },
+    include: {
+      workspace: { select: { id: true, name: true, slug: true } },
+      wallOfLove: { select: { id: true, name: true, slug: true } },
+      brand: { select: { id: true, name: true, slug: true } },
+    },
+  });
 }

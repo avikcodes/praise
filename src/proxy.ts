@@ -12,22 +12,50 @@ import { auth } from "@/lib/auth/server";
  *    - Allows public marketing, public forms, public walls of love, and embed routes.
  */
 
+// Paths that belong strictly to the Praise core application platform
+// and MUST NEVER be rewritten to a customer custom domain route.
+const PLATFORM_PATH_PREFIXES = [
+  "/_next",
+  "/api",
+  "/dashboard",
+  "/auth",
+  "/login",
+  "/signup",
+  "/logout",
+  "/embed",
+  "/brand",
+  "/d/",
+  "/p/",
+  "/w/",
+  "/b/",
+];
+
+const PLATFORM_EXACT_PATHS = new Set([
+  "/favicon.ico",
+  "/robots.txt",
+  "/sitemap.xml",
+  "/icon.svg",
+  "/apple-icon.png",
+]);
+
 // Custom domain exclusion check
 function isCustomDomain(request: NextRequest): string | null {
   const { pathname } = request.nextUrl;
 
-  // Skip static assets, internal paths, and API routes from custom domain rewrites
-  if (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/embed") ||
-    pathname.startsWith("/brand") ||
-    pathname.startsWith("/d/") ||
-    pathname === "/favicon.ico" ||
-    pathname === "/robots.txt" ||
-    pathname === "/sitemap.xml" ||
-    pathname.includes(".")
-  ) {
+  // 1. Skip all static assets with file extensions
+  if (pathname.includes(".")) {
+    return null;
+  }
+
+  // 2. Skip all platform path prefixes (dashboard, auth, login, signup, api, embed, etc.)
+  for (const prefix of PLATFORM_PATH_PREFIXES) {
+    if (pathname.startsWith(prefix)) {
+      return null;
+    }
+  }
+
+  // 3. Skip exact platform file paths
+  if (PLATFORM_EXACT_PATHS.has(pathname)) {
     return null;
   }
 
@@ -38,20 +66,28 @@ function isCustomDomain(request: NextRequest): string | null {
 
   const host = rawHost.split(":")[0].toLowerCase().trim();
 
+  // Known application / system domains that MUST NEVER be rewritten as customer custom domains:
   const defaultDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN || "").toLowerCase().trim();
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").toLowerCase().trim();
   const siteHost = siteUrl.replace(/^[a-z]+:\/\//, "").split("/")[0].split(":")[0];
+  const vercelUrl = (process.env.VERCEL_URL || "").toLowerCase().trim().replace(/^[a-z]+:\/\//, "").split(":")[0];
+  const vercelProdUrl = (process.env.VERCEL_PROJECT_PRODUCTION_URL || "").toLowerCase().trim().replace(/^[a-z]+:\/\//, "").split(":")[0];
 
   const isLocalOrSystem =
     !host ||
     host === "localhost" ||
     host === "127.0.0.1" ||
     host === "0.0.0.0" ||
+    host === "praise.aviklabs.xyz" ||
     host.endsWith(".localhost") ||
     host.endsWith(".local") ||
     host.endsWith(".internal") ||
+    host.endsWith(".test") ||
+    host.endsWith(".vercel.app") || // All Vercel preview, branch, and deployment hosts
     (defaultDomain && host === defaultDomain) ||
-    (siteHost && host === siteHost);
+    (siteHost && host === siteHost) ||
+    (vercelUrl && host === vercelUrl) ||
+    (vercelProdUrl && host === vercelProdUrl);
 
   if (isLocalOrSystem) {
     return null;
