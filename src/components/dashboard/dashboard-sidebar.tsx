@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  ClipboardCheck,
   ExternalLink,
   Film,
   FolderKanban,
@@ -42,6 +43,7 @@ const navigationItems: NavItem[] = [
   { label: "Testimonials", href: "/dashboard/testimonials", icon: MessageSquareQuote },
   { label: "Video Studio", href: "/dashboard/video-studio", icon: Film, badge: "Studio", badgeVariant: "brand" },
   { label: "Forms", href: "/dashboard/forms", icon: Inbox },
+  { label: "Surveys", href: "/dashboard/surveys", icon: ClipboardCheck, badge: "New", badgeVariant: "brand" },
   { label: "Customers", href: "/dashboard/customers", icon: Users2 },
   { label: "Invitations", href: "/dashboard/invitations", icon: Mail },
   { label: "Rewards", href: "/dashboard/rewards", icon: Gift },

@@ -202,6 +202,10 @@ model Workspace {
   platformSyncLogs PlatformSyncLog[]
   wallsOfLove WallOfLove[]
   customDomains CustomDomain[]
+  surveys        Survey[]
+  surveyResponses SurveyResponse[]
+  surveyRoutingRules SurveyRoutingRule[]
+  surveyRoutingLogs SurveyRoutingLog[]
 
   @@index([slug])
   @@map("workspaces")
@@ -280,6 +284,7 @@ model Project {
   testimonials Testimonial[]
   widgets      Widget[]
   wallsOfLove  WallOfLove[]
+  surveys      Survey[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1523,6 +1528,209 @@ model CustomDomain {
   @@index([brandId])
   @@map("custom_domains")
 }
+
+// -----------------------------------------------------------------------------
+// 20. Customer Surveys & Responses
+// -----------------------------------------------------------------------------
+
+enum SurveyType {
+  NPS
+  CSAT
+  CES
+  FIVE_STAR
+  CUSTOM
+}
+
+enum SurveyStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+model Survey {
+  id                      String          @id @default(cuid())
+  workspaceId             String
+  projectId               String?
+  title                   String
+  slug                    String
+  description             String?
+  type                    SurveyType      @default(NPS)
+  status                  SurveyStatus    @default(ACTIVE)
+
+  // Introductory & Branding Content
+  welcomeHeading          String?
+  welcomeText             String?
+  primaryPrompt           String
+  feedbackPrompt          String?         @default("What is the primary reason for your score?")
+  feedbackRequired        Boolean         @default(false)
+  thankYouHeading         String?         @default("Thank you for your feedback!")
+  thankYouMessage         String?         @default("Your response helps us improve our product and service.")
+  redirectUrl             String?
+
+  // Appearance & Theme
+  accentColor             String?         @default("#7049D8")
+  theme                   String?         @default("warm")
+  customLogoUrl           String?
+  showBranding            Boolean         @default(true)
+
+  // Respondent Info Collection
+  collectName             Boolean         @default(false)
+  nameRequired            Boolean         @default(false)
+  collectEmail            Boolean         @default(false)
+  emailRequired           Boolean         @default(false)
+  collectCompany          Boolean         @default(false)
+  companyRequired         Boolean         @default(false)
+
+  // Custom Follow-up Questions (JSON array of SurveyQuestion)
+  questionsJson           String?         @default("[]")
+
+  // Scoring configuration & metadata (e.g. scale labels, minimum/maximum labels)
+  scoringConfigJson       String?
+
+  viewsCount              Int             @default(0)
+  submissionsCount        Int             @default(0)
+
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  workspace               Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                 Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  responses               SurveyResponse[]
+  routingRules            SurveyRoutingRule[]
+  routingLogs             SurveyRoutingLog[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([slug])
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id                String        @id @default(cuid())
+  surveyId          String
+  workspaceId       String
+  
+  // Score (NPS 0-10, CSAT 1-5, CES 1-7, FIVE_STAR 1-5)
+  score             Int?
+  scoreType         SurveyType
+
+  // Primary feedback
+  feedback          String?
+
+  // Answers to follow-up questions (JSON object: Record<questionId, any>)
+  answersJson       String?       @default("{}")
+
+  // Respondent details (if collected)
+  respondentName    String?
+  respondentEmail   String?
+  respondentCompany String?
+
+  // Metadata (IP, user agent, referrer, etc.)
+  metadataJson      String?
+  submittedAt       DateTime      @default(now())
+
+  survey            Survey        @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  routingLogs       SurveyRoutingLog[]
+
+  @@index([surveyId])
+  @@index([workspaceId])
+  @@index([submittedAt])
+  @@map("survey_responses")
+}
+
+enum RoutingActionType {
+  REQUEST_TESTIMONIAL
+  INTERNAL_INBOX
+  CUSTOMER_SUCCESS_FOLLOWUP
+  NOTIFY_TEAM
+}
+
+enum RoutingTriggerCondition {
+  NPS_PROMOTER
+  NPS_PASSIVE
+  NPS_DETRACTOR
+  CSAT_SATISFIED
+  CSAT_NEUTRAL
+  CSAT_DISSATISFIED
+  CES_LOW_EFFORT
+  CES_HIGH_EFFORT
+  FIVE_STAR_HIGH
+  FIVE_STAR_LOW
+  SCORE_BETWEEN
+  ALWAYS
+}
+
+enum RoutingLogStatus {
+  SUCCESS
+  SKIPPED
+  FAILED
+}
+
+model SurveyRoutingRule {
+  id               String                  @id @default(cuid())
+  workspaceId      String
+  surveyId         String?
+  name             String
+  description      String?
+  isEnabled        Boolean                 @default(true)
+  priority         Int                     @default(0)
+
+  // Condition Definition
+  triggerCondition RoutingTriggerCondition @default(NPS_PROMOTER)
+  minScore         Int?
+  maxScore         Int?
+  requireFeedback  Boolean                 @default(false)
+  keywordContains  String?
+  requireEmail     Boolean                 @default(false)
+  customFilterJson String?
+
+  // Action Definition
+  actionType       RoutingActionType       @default(REQUEST_TESTIMONIAL)
+  actionConfigJson String?
+
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  workspace        Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  survey           Survey?                 @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  logs             SurveyRoutingLog[]
+
+  @@index([workspaceId])
+  @@index([surveyId])
+  @@index([isEnabled])
+  @@map("survey_routing_rules")
+}
+
+model SurveyRoutingLog {
+  id                String            @id @default(cuid())
+  workspaceId       String
+  surveyId          String
+  responseId        String
+  ruleId            String?
+  ruleName          String
+  actionType        RoutingActionType
+  status            RoutingLogStatus  @default(SUCCESS)
+  reason            String?
+  actionPayloadJson String?
+  executedAt        DateTime          @default(now())
+
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  survey            Survey            @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  response          SurveyResponse    @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  rule              SurveyRoutingRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+
+  @@unique([responseId, ruleId])
+  @@index([workspaceId])
+  @@index([surveyId])
+  @@index([responseId])
+  @@index([executedAt])
+  @@map("survey_routing_logs")
+}
+
+
 
 
 
