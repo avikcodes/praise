@@ -97,13 +97,9 @@ export default function WidgetsPage() {
     setPreviewingWidget(w);
     const initialType =
       type ||
-      (w.config.layout === "carousel"
-        ? "carousel"
-        : w.config.layout === "single_quote"
-        ? "single_quote"
-        : w.config.layout === "list"
-        ? "list"
-        : "grid");
+      w.config.widgetType ||
+      (w.config.layout as WidgetDisplayType) ||
+      "grid";
     setPreviewType(initialType);
     setIsLoadingPreview(true);
     try {
@@ -379,9 +375,13 @@ export default function WidgetsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
                   { id: "grid", label: "Grid" },
+                  { id: "masonry", label: "Masonry" },
                   { id: "carousel", label: "Carousel" },
-                  { id: "single_quote", label: "Single Quote" },
-                  { id: "list", label: "Feed / List" },
+                  { id: "slider", label: "Slider" },
+                  { id: "video", label: "Video" },
+                  { id: "audio", label: "Audio" },
+                  { id: "single_quote", label: "Quote" },
+                  { id: "list", label: "List" },
                 ].map((type) => (
                   <button
                     key={type.id}
@@ -582,12 +582,23 @@ export default function WidgetsPage() {
           <div className="space-y-4">
             {/* Layout Switcher Tabs */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {[
-                  { id: "grid", label: "1. Grid" },
-                  { id: "carousel", label: "2. Carousel" },
-                  { id: "single_quote", label: "3. Single Quote" },
-                  { id: "list", label: "4. List" },
+                  { id: "grid", label: "Grid" },
+                  { id: "masonry", label: "Masonry" },
+                  { id: "carousel", label: "Carousel" },
+                  { id: "slider", label: "Slider" },
+                  { id: "video", label: "Video" },
+                  { id: "audio", label: "Audio" },
+                  { id: "single_quote", label: "Quote" },
+                  { id: "list", label: "List" },
+                  { id: "avatar_wall", label: "Avatar Wall" },
+                  { id: "avatar_grid", label: "Customer Grid" },
+                  { id: "rating_badge", label: "Rating Badge" },
+                  { id: "review_badge", label: "Review Count" },
+                  { id: "floating_badge", label: "Floating Badge" },
+                  { id: "popup", label: "Popup" },
+                  { id: "notification", label: "Toast" },
                 ].map((tab) => (
                   <button
                     key={tab.id}

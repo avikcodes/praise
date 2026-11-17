@@ -6,7 +6,15 @@ export type WidgetDisplayType =
   | "masonry"
   | "slider"
   | "video"
-  | "audio";
+  | "audio"
+  | "avatar_wall"
+  | "avatar_grid"
+  | "rating_badge"
+  | "review_badge"
+  | "floating_badge"
+  | "popup"
+  | "notification";
+
 export type WidgetLayout =
   | "masonry"
   | "grid"
@@ -16,7 +24,23 @@ export type WidgetLayout =
   | "adaptive"
   | "slider"
   | "video"
-  | "audio";
+  | "audio"
+  | "avatar_wall"
+  | "avatar_grid"
+  | "rating_badge"
+  | "review_badge"
+  | "floating_badge"
+  | "popup"
+  | "notification";
+
+export type WidgetPosition =
+  | "bottom-left"
+  | "bottom-right"
+  | "top-left"
+  | "top-right"
+  | "bottom-center"
+  | "top-center"
+  | "center";
 export type WidgetThemeMode = "warm" | "light" | "dark" | "auto" | "transparent";
 export type WidgetOrdering = "featured_first" | "highest_rated" | "newest" | "oldest";
 export type WidgetTypographyFamily = "sans" | "serif" | "mono" | "geometric" | "humanist";
@@ -68,6 +92,17 @@ export type WallOfLoveConfig = {
   autoplay?: boolean;
   autoplayInterval?: number;
   maxItems?: number;
+  position?: WidgetPosition;
+  displayDelay?: number;
+  displayDuration?: number;
+  displayInterval?: number;
+  maxDisplayCount?: number;
+  sessionFrequencyLimit?: number;
+  hideOnMobile?: boolean;
+  mobilePosition?: WidgetPosition;
+  badgeStyle?: "pill" | "card" | "compact" | "minimal" | "glass";
+  avatarCount?: number;
+  avatarSize?: "sm" | "md" | "lg";
 };
 
 export type WidgetDetail = {

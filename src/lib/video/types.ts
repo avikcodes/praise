@@ -42,3 +42,52 @@ export interface VideoExportResult {
   durationSeconds: number;
   resolution: string;
 }
+
+export type VideoCropMode = "fit" | "fill" | "custom";
+
+export interface VideoCropConfig {
+  mode: VideoCropMode;
+  x?: number; // 0 - 100 percentage
+  y?: number; // 0 - 100 percentage
+  width?: number; // 0 - 100 percentage
+  height?: number; // 0 - 100 percentage
+}
+
+export interface VideoStudioClip {
+  id: string;
+  mediaAssetId: string;
+  testimonialId: string;
+  title: string;
+  authorName?: string;
+  authorCompany?: string;
+  videoUrl: string;
+  trimStart: number; // seconds
+  trimEnd: number; // seconds
+  duration: number; // original duration in seconds
+  crop: VideoCropConfig;
+  order: number;
+}
+
+export interface BrandedCardConfig {
+  enabled: boolean;
+  type?: "TEXT_BADGE" | "LOGO_STAMP" | "CTA_CARD";
+  durationSeconds: number; // 1 to 5 seconds
+  title: string;
+  subtitle?: string;
+  logoUrl?: string | null;
+  backgroundColor: string;
+  textColor: string;
+}
+
+export interface VideoStudioConfig {
+  id?: string;
+  name?: string;
+  aspectRatio: VideoAspectRatio;
+  resolutionProfile: VideoResolutionProfile;
+  clips: VideoStudioClip[];
+  intro: BrandedCardConfig;
+  outro: BrandedCardConfig;
+  burnSubtitles?: boolean;
+  subtitleStyle?: SubtitleStyleConfig;
+  updatedAt?: string;
+}

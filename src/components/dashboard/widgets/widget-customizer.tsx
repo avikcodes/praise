@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
+  Award,
+  Bell,
   Check,
   CheckCircle2,
   Code,
@@ -15,6 +17,8 @@ import {
   LayoutGrid,
   List,
   Loader2,
+  Maximize2,
+  MessageSquare,
   Mic,
   Monitor,
   Palette,
@@ -26,9 +30,11 @@ import {
   SlidersHorizontal,
   Smartphone,
   Sparkles,
+  Star,
   Tablet,
   Trash2,
   UploadCloud,
+  Users,
   Video,
 } from "lucide-react";
 import {
@@ -40,6 +46,7 @@ import {
   WidgetDetail,
   WidgetDisplayType,
   WidgetOrdering,
+  WidgetPosition,
   WidgetSelectionMode,
   WidgetThemeMode,
   WidgetTypographyFamily,
@@ -141,21 +148,8 @@ export function WidgetCustomizer({
   // 2. Layout & Type Configuration
   const [widgetType, setWidgetType] = useState<WidgetDisplayType>(
     initialWidget?.config.widgetType ||
-      (initialWidget?.config.layout === "carousel"
-        ? "carousel"
-        : initialWidget?.config.layout === "masonry"
-        ? "masonry"
-        : initialWidget?.config.layout === "slider"
-        ? "slider"
-        : initialWidget?.config.layout === "video"
-        ? "video"
-        : initialWidget?.config.layout === "audio"
-        ? "audio"
-        : initialWidget?.config.layout === "single_quote"
-        ? "single_quote"
-        : initialWidget?.config.layout === "list"
-        ? "list"
-        : "grid")
+    (initialWidget?.config.layout as WidgetDisplayType) ||
+    "grid"
   );
   const [cardsPerRow, setCardsPerRow] = useState<number>(initialWidget?.config.cardsPerRow || 3);
   const [ordering, setOrdering] = useState<WidgetOrdering>(
@@ -164,6 +158,41 @@ export function WidgetCustomizer({
   const [autoplay, setAutoplay] = useState<boolean>(initialWidget?.config.autoplay ?? true);
   const [autoplayInterval, setAutoplayInterval] = useState<number>(
     initialWidget?.config.autoplayInterval || 5000
+  );
+
+  // Advanced Social-Proof Widget Parameters
+  const [position, setPosition] = useState<WidgetPosition>(
+    initialWidget?.config.position || "bottom-right"
+  );
+  const [displayDelay, setDisplayDelay] = useState<number>(
+    initialWidget?.config.displayDelay ?? 3000
+  );
+  const [displayDuration, setDisplayDuration] = useState<number>(
+    initialWidget?.config.displayDuration ?? 6000
+  );
+  const [displayInterval, setDisplayInterval] = useState<number>(
+    initialWidget?.config.displayInterval ?? 8000
+  );
+  const [maxDisplayCount, setMaxDisplayCount] = useState<number>(
+    initialWidget?.config.maxDisplayCount ?? 5
+  );
+  const [sessionFrequencyLimit, setSessionFrequencyLimit] = useState<number>(
+    initialWidget?.config.sessionFrequencyLimit ?? 3
+  );
+  const [hideOnMobile, setHideOnMobile] = useState<boolean>(
+    initialWidget?.config.hideOnMobile ?? false
+  );
+  const [mobilePosition, setMobilePosition] = useState<WidgetPosition | undefined>(
+    initialWidget?.config.mobilePosition || undefined
+  );
+  const [badgeStyle, setBadgeStyle] = useState<"minimal" | "pill" | "glass" | "card" | "compact">(
+    (initialWidget?.config.badgeStyle as "minimal" | "pill" | "glass" | "card" | "compact") || "pill"
+  );
+  const [avatarCount, setAvatarCount] = useState<number>(
+    initialWidget?.config.avatarCount || 8
+  );
+  const [avatarSize, setAvatarSize] = useState<"sm" | "md" | "lg">(
+    initialWidget?.config.avatarSize || "md"
   );
 
   // 3. Branding, Appearance & Typography Configuration
@@ -467,6 +496,17 @@ export function WidgetCustomizer({
         autoplay,
         autoplayInterval,
         allowVideoPlayback,
+        position,
+        displayDelay,
+        displayDuration,
+        displayInterval,
+        maxDisplayCount,
+        sessionFrequencyLimit,
+        hideOnMobile,
+        mobilePosition,
+        badgeStyle,
+        avatarCount,
+        avatarSize,
         ctaEnabled,
         ctaLabel: ctaLabel.trim(),
         ctaUrl: ctaUrl.trim(),
@@ -485,8 +525,8 @@ export function WidgetCustomizer({
         widgetType === "carousel" || widgetType === "slider"
           ? "CAROUSEL"
           : widgetType === "single_quote"
-          ? "QUOTE_CARD"
-          : "GRID";
+            ? "QUOTE_CARD"
+            : "GRID";
 
       const res = await fetch(endpoint, {
         method,
@@ -521,15 +561,15 @@ export function WidgetCustomizer({
   const origin = typeof window !== "undefined" ? window.location.origin : "https://praise.app";
   const embedSlug = sanitizePublicSlug(slug || name || "widget");
   const scriptSnippet = `<!-- Praise Testimonial Widget -->\n<div data-praise-widget="${embedSlug}"></div>\n<script async src="${origin}/embed.js"></script>`;
-  
+
   const defaultIframeHeight =
     widgetType === "single_quote"
       ? "420"
       : widgetType === "carousel" || widgetType === "slider"
-      ? "520"
-      : widgetType === "audio"
-      ? "560"
-      : "700";
+        ? "520"
+        : widgetType === "audio"
+          ? "560"
+          : "700";
 
   const iframeStaticSnippet = `<!-- Praise Static HTML iFrame Widget -->\n<iframe\n  src="${origin}/embed/${embedSlug}?type=${widgetType}&theme=${theme}"\n  width="100%"\n  height="${defaultIframeHeight}"\n  frameborder="0"\n  scrolling="no"\n  loading="lazy"\n  title="Customer Testimonials"\n  style="width: 100%; border: none; overflow: hidden; background: transparent;"\n  allow="autoplay; encrypted-media; fullscreen"\n></iframe>`;
 
@@ -604,11 +644,10 @@ export function WidgetCustomizer({
               type="button"
               onClick={() => setDeviceViewport("desktop")}
               aria-label="Desktop preview"
-              className={`p-1.5 rounded-md transition-colors ${
-                deviceViewport === "desktop"
-                  ? "bg-white text-brand-600 shadow-2xs font-semibold"
-                  : "hover:text-ink-900"
-              }`}
+              className={`p-1.5 rounded-md transition-colors ${deviceViewport === "desktop"
+                ? "bg-white text-brand-600 shadow-2xs font-semibold"
+                : "hover:text-ink-900"
+                }`}
               title="Full Desktop View (100%)"
             >
               <Monitor size={15} />
@@ -617,11 +656,10 @@ export function WidgetCustomizer({
               type="button"
               onClick={() => setDeviceViewport("tablet")}
               aria-label="Tablet preview"
-              className={`p-1.5 rounded-md transition-colors ${
-                deviceViewport === "tablet"
-                  ? "bg-white text-brand-600 shadow-2xs font-semibold"
-                  : "hover:text-ink-900"
-              }`}
+              className={`p-1.5 rounded-md transition-colors ${deviceViewport === "tablet"
+                ? "bg-white text-brand-600 shadow-2xs font-semibold"
+                : "hover:text-ink-900"
+                }`}
               title="Tablet View (768px)"
             >
               <Tablet size={15} />
@@ -630,11 +668,10 @@ export function WidgetCustomizer({
               type="button"
               onClick={() => setDeviceViewport("mobile")}
               aria-label="Mobile preview"
-              className={`p-1.5 rounded-md transition-colors ${
-                deviceViewport === "mobile"
-                  ? "bg-white text-brand-600 shadow-2xs font-semibold"
-                  : "hover:text-ink-900"
-              }`}
+              className={`p-1.5 rounded-md transition-colors ${deviceViewport === "mobile"
+                ? "bg-white text-brand-600 shadow-2xs font-semibold"
+                : "hover:text-ink-900"
+                }`}
               title="Mobile Device View (380px)"
             >
               <Smartphone size={15} />
@@ -683,11 +720,10 @@ export function WidgetCustomizer({
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTab(t.id as typeof activeTab)}
-                  className={`rounded-t-lg px-3 py-2 text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0 ${
-                    isActive
-                      ? "bg-white text-brand-600 border-t border-x border-line shadow-2xs -mb-px font-bold"
-                      : "text-ink-600 hover:text-ink-900"
-                  }`}
+                  className={`rounded-t-lg px-3 py-2 text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0 ${isActive
+                    ? "bg-white text-brand-600 border-t border-x border-line shadow-2xs -mb-px font-bold"
+                    : "text-ink-600 hover:text-ink-900"
+                    }`}
                 >
                   <Icon size={13} />
                   <span>{t.label}</span>
@@ -804,11 +840,10 @@ export function WidgetCustomizer({
                     <button
                       type="button"
                       onClick={() => setSelectionMode("all")}
-                      className={`p-2.5 rounded-xl border text-left transition-colors ${
-                        selectionMode === "all"
-                          ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs font-semibold"
-                          : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                      }`}
+                      className={`p-2.5 rounded-xl border text-left transition-colors ${selectionMode === "all"
+                        ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs font-semibold"
+                        : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                        }`}
                     >
                       <span className="block text-xs font-bold">All Approved</span>
                       <span className="block text-[10px] text-ink-500 font-normal mt-0.5">
@@ -819,11 +854,10 @@ export function WidgetCustomizer({
                     <button
                       type="button"
                       onClick={() => setSelectionMode("manual")}
-                      className={`p-2.5 rounded-xl border text-left transition-colors ${
-                        selectionMode === "manual"
-                          ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs font-semibold"
-                          : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                      }`}
+                      className={`p-2.5 rounded-xl border text-left transition-colors ${selectionMode === "manual"
+                        ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs font-semibold"
+                        : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                        }`}
                     >
                       <span className="block text-xs font-bold">Specific Selection</span>
                       <span className="block text-[10px] text-ink-500 font-normal mt-0.5">
@@ -872,11 +906,10 @@ export function WidgetCustomizer({
                           return (
                             <label
                               key={t.id}
-                              className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
-                                isChecked
-                                  ? "border-brand-300 bg-white shadow-2xs"
-                                  : "border-transparent bg-white/70 hover:bg-white"
-                              }`}
+                              className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${isChecked
+                                ? "border-brand-300 bg-white shadow-2xs"
+                                : "border-transparent bg-white/70 hover:bg-white"
+                                }`}
                             >
                               <input
                                 type="checkbox"
@@ -924,11 +957,10 @@ export function WidgetCustomizer({
                             key={tag.id}
                             type="button"
                             onClick={() => toggleTag(tag.name)}
-                            className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition-all flex items-center gap-1 ${
-                              isSelected
-                                ? "bg-brand-50 border-brand-300 text-brand-700 shadow-2xs"
-                                : "bg-white border-line text-ink-600 hover:bg-warm-50"
-                            }`}
+                            className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold border transition-all flex items-center gap-1 ${isSelected
+                              ? "bg-brand-50 border-brand-300 text-brand-700 shadow-2xs"
+                              : "bg-white border-line text-ink-600 hover:bg-warm-50"
+                              }`}
                           >
                             <span>#{tag.name}</span>
                             {isSelected && <Check size={11} />}
@@ -1008,7 +1040,7 @@ export function WidgetCustomizer({
                   <h4 className="text-xs font-bold uppercase tracking-wider text-ink-400 mb-2">
                     Widget Type
                   </h4>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2.5">
                     {[
                       {
                         id: "grid",
@@ -1058,6 +1090,48 @@ export function WidgetCustomizer({
                         icon: List,
                         desc: "Linear vertical feed or changelog flow",
                       },
+                      {
+                        id: "avatar_wall",
+                        label: "9. Avatar Wall",
+                        icon: Users,
+                        desc: "Overlapping face pile with live average rating",
+                      },
+                      {
+                        id: "avatar_grid",
+                        label: "10. Customer Grid",
+                        icon: LayoutGrid,
+                        desc: "Grid of verified customer avatars and profile cards",
+                      },
+                      {
+                        id: "rating_badge",
+                        label: "11. Rating Badge",
+                        icon: Star,
+                        desc: "Google/Trustpilot-style verified star rating badge",
+                      },
+                      {
+                        id: "review_badge",
+                        label: "12. Review Count",
+                        icon: Award,
+                        desc: "Micro-avatar counter with total verified customer count",
+                      },
+                      {
+                        id: "floating_badge",
+                        label: "13. Floating Badge",
+                        icon: MessageSquare,
+                        desc: "Corner badge highlighting latest customer review",
+                      },
+                      {
+                        id: "popup",
+                        label: "14. Popup Review",
+                        icon: Maximize2,
+                        desc: "Modal popup highlighting real reviews with session limits",
+                      },
+                      {
+                        id: "notification",
+                        label: "15. Social Toast",
+                        icon: Bell,
+                        desc: "Cycling toast notifications in screen corner",
+                      },
                     ].map((t) => {
                       const Icon = t.icon;
                       const isSelected = widgetType === t.id;
@@ -1066,15 +1140,14 @@ export function WidgetCustomizer({
                           key={t.id}
                           type="button"
                           onClick={() => setWidgetType(t.id as WidgetDisplayType)}
-                          className={`p-3.5 rounded-xl border text-left transition-all ${
-                            isSelected
-                              ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs ring-1 ring-brand-500"
-                              : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                          }`}
+                          className={`p-3 rounded-xl border text-left transition-all ${isSelected
+                            ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs ring-1 ring-brand-500"
+                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                            }`}
                         >
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-bold text-xs">{t.label}</span>
-                            <Icon size={15} className={isSelected ? "text-brand-600" : "text-ink-400"} />
+                            <Icon size={14} className={isSelected ? "text-brand-600" : "text-ink-400"} />
                           </div>
                           <span className="text-[10px] text-ink-500 block leading-tight">
                             {t.desc}
@@ -1086,7 +1159,7 @@ export function WidgetCustomizer({
                 </div>
 
                 {/* Specific Layout Settings */}
-                {(widgetType === "grid" || widgetType === "masonry" || widgetType === "video" || widgetType === "audio") && (
+                {(widgetType === "grid" || widgetType === "masonry" || widgetType === "video" || widgetType === "audio" || widgetType === "avatar_grid") && (
                   <div className="space-y-3 pt-3 border-t border-line">
                     <label className="block text-xs font-semibold text-ink-900">
                       Columns Layout
@@ -1097,11 +1170,10 @@ export function WidgetCustomizer({
                           key={cols}
                           type="button"
                           onClick={() => setCardsPerRow(cols)}
-                          className={`py-1.5 rounded-lg border text-xs font-bold transition-colors ${
-                            cardsPerRow === cols
-                              ? "border-brand-500 bg-brand-50 text-brand-700"
-                              : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                          }`}
+                          className={`py-1.5 rounded-lg border text-xs font-bold transition-colors ${cardsPerRow === cols
+                            ? "border-brand-500 bg-brand-50 text-brand-700"
+                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                            }`}
                         >
                           {cols} Col{cols > 1 ? "s" : ""}
                         </button>
@@ -1140,6 +1212,202 @@ export function WidgetCustomizer({
                         </select>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Avatar Specific Settings */}
+                {(widgetType === "avatar_wall" || widgetType === "avatar_grid") && (
+                  <div className="space-y-3 pt-3 border-t border-line">
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-ink-400">
+                      Avatar Cloud Settings
+                    </h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-medium text-ink-600 mb-1">
+                          Displayed Faces Count
+                        </label>
+                        <select
+                          value={avatarCount}
+                          onChange={(e) => setAvatarCount(Number(e.target.value))}
+                          className="w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs text-ink-900"
+                        >
+                          <option value={4}>4 Avatars</option>
+                          <option value={6}>6 Avatars</option>
+                          <option value={8}>8 Avatars</option>
+                          <option value={12}>12 Avatars</option>
+                          <option value={16}>16 Avatars</option>
+                          <option value={24}>24 Avatars</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-ink-600 mb-1">
+                          Avatar Size
+                        </label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(["sm", "md", "lg"] as const).map((sz) => (
+                            <button
+                              key={sz}
+                              type="button"
+                              onClick={() => setAvatarSize(sz)}
+                              className={`py-1 text-center rounded-lg border text-xs font-semibold uppercase ${avatarSize === sz
+                                ? "border-brand-500 bg-brand-50 text-brand-700"
+                                : "border-line bg-white text-ink-600 hover:bg-warm-50"
+                                }`}
+                            >
+                              {sz}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Badge Style Configuration */}
+                {(widgetType === "rating_badge" || widgetType === "review_badge") && (
+                  <div className="space-y-3 pt-3 border-t border-line">
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-ink-400">
+                      Badge Presentation Style
+                    </h5>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: "pill", label: "Rounded Pill", desc: "Classic rounded badge" },
+                        { id: "card", label: "Rect Card", desc: "Structured border card" },
+                        { id: "glass", label: "Frosted Glass", desc: "Blur backdrop fill" },
+                        { id: "minimal", label: "Minimalist", desc: "Borderless transparent" },
+                      ].map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => setBadgeStyle(b.id as any)}
+                          className={`p-2.5 rounded-xl border text-left transition-colors ${badgeStyle === b.id
+                            ? "border-brand-500 bg-brand-50 text-brand-700 font-semibold shadow-2xs"
+                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                            }`}
+                        >
+                          <span className="block text-xs font-bold">{b.label}</span>
+                          <span className="block text-[10px] text-ink-500">{b.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Floating, Popup & Notification Timing & Placement Controls */}
+                {(widgetType === "floating_badge" || widgetType === "popup" || widgetType === "notification") && (
+                  <div className="space-y-3 pt-3 border-t border-line">
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-ink-400">
+                      Placement &amp; Notification Rules
+                    </h5>
+
+                    {/* Position */}
+                    {widgetType !== "popup" && (
+                      <div>
+                        <label className="block text-[11px] font-medium text-ink-600 mb-1">
+                          Anchor Position
+                        </label>
+                        <select
+                          value={position}
+                          onChange={(e) => setPosition(e.target.value as WidgetPosition)}
+                          className="w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs text-ink-900"
+                        >
+                          <option value="bottom-right">Bottom Right (Recommended)</option>
+                          <option value="bottom-left">Bottom Left</option>
+                          <option value="top-right">Top Right</option>
+                          <option value="top-left">Top Left</option>
+                          <option value="bottom-center">Bottom Center</option>
+                          <option value="top-center">Top Center</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Mobile Settings */}
+                    <div className="rounded-xl border border-line bg-warm-50/50 p-3 space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer font-semibold text-ink-900 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={hideOnMobile}
+                          onChange={(e) => setHideOnMobile(e.target.checked)}
+                          className="rounded border-line text-brand-600 focus:ring-brand-500 h-4 w-4"
+                        />
+                        <span>Hide on Mobile Devices</span>
+                      </label>
+                      <p className="text-[10px] text-ink-500 leading-normal pl-6">
+                        Prevents floating elements from obscuring inputs, buttons, or navigation on smartphones.
+                      </p>
+                    </div>
+
+                    {/* Timing & Frequency Controls */}
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-medium text-ink-600 mb-1">
+                          Initial Display Delay
+                        </label>
+                        <select
+                          value={displayDelay}
+                          onChange={(e) => setDisplayDelay(Number(e.target.value))}
+                          className="w-full rounded-lg border border-line bg-white px-2 py-1 text-xs"
+                        >
+                          <option value={1000}>1 second</option>
+                          <option value={2500}>2.5 seconds</option>
+                          <option value={3000}>3 seconds</option>
+                          <option value={5000}>5 seconds</option>
+                          <option value={8000}>8 seconds</option>
+                        </select>
+                      </div>
+
+                      {widgetType === "notification" && (
+                        <div>
+                          <label className="block text-[10px] font-medium text-ink-600 mb-1">
+                            Toast Duration
+                          </label>
+                          <select
+                            value={displayDuration}
+                            onChange={(e) => setDisplayDuration(Number(e.target.value))}
+                            className="w-full rounded-lg border border-line bg-white px-2 py-1 text-xs"
+                          >
+                            <option value={4000}>4 seconds</option>
+                            <option value={6000}>6 seconds</option>
+                            <option value={8000}>8 seconds</option>
+                            <option value={10000}>10 seconds</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {widgetType === "notification" && (
+                        <div>
+                          <label className="block text-[10px] font-medium text-ink-600 mb-1">
+                            Cycle Interval
+                          </label>
+                          <select
+                            value={displayInterval}
+                            onChange={(e) => setDisplayInterval(Number(e.target.value))}
+                            className="w-full rounded-lg border border-line bg-white px-2 py-1 text-xs"
+                          >
+                            <option value={5000}>5 seconds</option>
+                            <option value={8000}>8 seconds</option>
+                            <option value={12000}>12 seconds</option>
+                            <option value={15000}>15 seconds</option>
+                          </select>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-[10px] font-medium text-ink-600 mb-1">
+                          Max Displays / Session
+                        </label>
+                        <select
+                          value={maxDisplayCount}
+                          onChange={(e) => setMaxDisplayCount(Number(e.target.value))}
+                          className="w-full rounded-lg border border-line bg-white px-2 py-1 text-xs"
+                        >
+                          <option value={1}>1 time only</option>
+                          <option value={3}>Up to 3 times</option>
+                          <option value={5}>Up to 5 times</option>
+                          <option value={10}>Up to 10 times</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1247,11 +1515,10 @@ export function WidgetCustomizer({
                     {/* Real-time WCAG Contrast Indicator */}
                     <div className="flex items-center gap-1.5">
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          contrastInfo.passesAA
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : "bg-amber-50 text-amber-700 border border-amber-200"
-                        }`}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${contrastInfo.passesAA
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-amber-50 text-amber-700 border border-amber-200"
+                          }`}
                         title={`Contrast Ratio: ${contrastInfo.formattedRatio}`}
                       >
                         {contrastInfo.passesAA ? (
@@ -1345,11 +1612,10 @@ export function WidgetCustomizer({
                         key={f.id}
                         type="button"
                         onClick={() => setTypographyFamily(f.id)}
-                        className={`w-full p-2.5 rounded-xl border text-left transition-all ${
-                          typographyFamily === f.id
-                            ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500 shadow-2xs font-semibold"
-                            : "border-line bg-white hover:bg-warm-50 text-ink-700"
-                        }`}
+                        className={`w-full p-2.5 rounded-xl border text-left transition-all ${typographyFamily === f.id
+                          ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500 shadow-2xs font-semibold"
+                          : "border-line bg-white hover:bg-warm-50 text-ink-700"
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span
@@ -1380,11 +1646,10 @@ export function WidgetCustomizer({
                         key={sz.id}
                         type="button"
                         onClick={() => setTypographySize(sz.id as WidgetTypographySize)}
-                        className={`py-1.5 rounded-lg border text-center text-xs font-medium transition-colors ${
-                          typographySize === sz.id
-                            ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
-                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                        }`}
+                        className={`py-1.5 rounded-lg border text-center text-xs font-medium transition-colors ${typographySize === sz.id
+                          ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
+                          : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                          }`}
                       >
                         {sz.label}
                       </button>
@@ -1408,11 +1673,10 @@ export function WidgetCustomizer({
                         key={t.id}
                         type="button"
                         onClick={() => setTheme(t.id as WidgetThemeMode)}
-                        className={`p-2.5 rounded-xl border text-left transition-colors ${
-                          theme === t.id
-                            ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs font-semibold"
-                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                        }`}
+                        className={`p-2.5 rounded-xl border text-left transition-colors ${theme === t.id
+                          ? "border-brand-500 bg-brand-50/50 text-brand-700 shadow-2xs font-semibold"
+                          : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                          }`}
                       >
                         <span className="block text-xs font-bold">{t.label}</span>
                         <span className="block text-[10px] text-ink-500 mt-0.5">{t.desc}</span>
@@ -1471,11 +1735,10 @@ export function WidgetCustomizer({
                           key={b.id}
                           type="button"
                           onClick={() => setCardBorder(b.id as WidgetCardBorder)}
-                          className={`py-1.5 rounded-lg border text-center text-xs font-medium transition-colors ${
-                            cardBorder === b.id
-                              ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
-                              : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                          }`}
+                          className={`py-1.5 rounded-lg border text-center text-xs font-medium transition-colors ${cardBorder === b.id
+                            ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
+                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                            }`}
                         >
                           {b.label}
                         </button>
@@ -1500,11 +1763,10 @@ export function WidgetCustomizer({
                           key={r.id}
                           type="button"
                           onClick={() => setCardRadius(r.id as WidgetCardRadius)}
-                          className={`py-1 rounded-md border text-center text-[11px] font-medium transition-colors ${
-                            cardRadius === r.id
-                              ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
-                              : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                          }`}
+                          className={`py-1 rounded-md border text-center text-[11px] font-medium transition-colors ${cardRadius === r.id
+                            ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
+                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                            }`}
                         >
                           {r.label}
                         </button>
@@ -1527,11 +1789,10 @@ export function WidgetCustomizer({
                           key={s.id}
                           type="button"
                           onClick={() => setCardSpacing(s.id as WidgetCardSpacing)}
-                          className={`py-1.5 rounded-lg border text-center text-xs font-medium transition-colors ${
-                            cardSpacing === s.id
-                              ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
-                              : "border-line bg-white text-ink-700 hover:bg-warm-50"
-                          }`}
+                          className={`py-1.5 rounded-lg border text-center text-xs font-medium transition-colors ${cardSpacing === s.id
+                            ? "border-brand-500 bg-brand-50 text-brand-700 font-bold"
+                            : "border-line bg-white text-ink-700 hover:bg-warm-50"
+                            }`}
                         >
                           {s.label}
                         </button>
@@ -1608,11 +1869,10 @@ export function WidgetCustomizer({
                     <button
                       type="button"
                       onClick={() => setEmbedMethod("script")}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
-                        embedMethod === "script"
-                          ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500 shadow-2xs"
-                          : "border-line bg-white hover:bg-warm-50 text-ink-600"
-                      }`}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${embedMethod === "script"
+                        ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500 shadow-2xs"
+                        : "border-line bg-white hover:bg-warm-50 text-ink-600"
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 font-bold text-xs text-ink-900">
                         <Sparkles size={13} className="text-brand-600" />
@@ -1626,11 +1886,10 @@ export function WidgetCustomizer({
                     <button
                       type="button"
                       onClick={() => setEmbedMethod("iframe")}
-                      className={`p-2.5 rounded-xl border text-left transition-all ${
-                        embedMethod === "iframe"
-                          ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500 shadow-2xs"
-                          : "border-line bg-white hover:bg-warm-50 text-ink-600"
-                      }`}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${embedMethod === "iframe"
+                        ? "border-brand-500 bg-brand-50/60 ring-1 ring-brand-500 shadow-2xs"
+                        : "border-line bg-white hover:bg-warm-50 text-ink-600"
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 font-bold text-xs text-ink-900">
                         <Code size={13} className="text-ink-600" />
@@ -1681,22 +1940,20 @@ export function WidgetCustomizer({
                         <button
                           type="button"
                           onClick={() => setIframeVariant("auto")}
-                          className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${
-                            iframeVariant === "auto"
-                              ? "bg-white text-ink-900 shadow-2xs"
-                              : "text-ink-500 hover:text-ink-900"
-                          }`}
+                          className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${iframeVariant === "auto"
+                            ? "bg-white text-ink-900 shadow-2xs"
+                            : "text-ink-500 hover:text-ink-900"
+                            }`}
                         >
                           Auto-Resizing
                         </button>
                         <button
                           type="button"
                           onClick={() => setIframeVariant("static")}
-                          className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${
-                            iframeVariant === "static"
-                              ? "bg-white text-ink-900 shadow-2xs"
-                              : "text-ink-500 hover:text-ink-900"
-                          }`}
+                          className={`px-2 py-0.5 rounded-md font-semibold transition-colors ${iframeVariant === "static"
+                            ? "bg-white text-ink-900 shadow-2xs"
+                            : "text-ink-500 hover:text-ink-900"
+                            }`}
                         >
                           Static (Zero-JS)
                         </button>
@@ -1805,13 +2062,12 @@ export function WidgetCustomizer({
         <div className="lg:col-span-7 xl:col-span-8 h-full bg-warm-100/60 p-4 sm:p-6 overflow-hidden flex flex-col items-center justify-start">
           {/* Viewport Canvas Frame */}
           <div
-            className={`w-full transition-all duration-300 flex flex-col h-full rounded-2xl border border-line bg-white shadow-sm overflow-hidden ${
-              deviceViewport === "mobile"
-                ? "max-w-[380px]"
-                : deviceViewport === "tablet"
+            className={`w-full transition-all duration-300 flex flex-col h-full rounded-2xl border border-line bg-white shadow-sm overflow-hidden ${deviceViewport === "mobile"
+              ? "max-w-[380px]"
+              : deviceViewport === "tablet"
                 ? "max-w-[768px]"
                 : "max-w-full"
-            }`}
+              }`}
           >
             {/* Mock Device Window Bar */}
             <div className="h-8 border-b border-line bg-warm-50 px-3 flex items-center justify-between text-xs text-ink-400 select-none shrink-0">
@@ -1836,15 +2092,15 @@ export function WidgetCustomizer({
                 config={{
                   theme,
                   accentColor: primaryColor,
-        primaryColor,
-        secondaryColor,
-        backgroundColor: backgroundColor.trim() ? backgroundColor.trim() : null,
-        textColor: textColor.trim() ? textColor.trim() : null,
-        cardBorder,
-        cardRadius,
-        cardSpacing,
-        showPraiseBranding,
-        customLogoUrl: customLogoUrl.trim() ? customLogoUrl.trim() : null,
+                  primaryColor,
+                  secondaryColor,
+                  backgroundColor: backgroundColor.trim() ? backgroundColor.trim() : null,
+                  textColor: textColor.trim() ? textColor.trim() : null,
+                  cardBorder,
+                  cardRadius,
+                  cardSpacing,
+                  showPraiseBranding,
+                  customLogoUrl: customLogoUrl.trim() ? customLogoUrl.trim() : null,
                   showRatings,
                   showCompany,
                   showAvatar,
@@ -1856,6 +2112,17 @@ export function WidgetCustomizer({
                   cardsPerRow,
                   autoplay,
                   autoplayInterval,
+                  position,
+                  displayDelay,
+                  displayDuration,
+                  displayInterval,
+                  maxDisplayCount,
+                  sessionFrequencyLimit,
+                  hideOnMobile,
+                  mobilePosition,
+                  badgeStyle,
+                  avatarCount,
+                  avatarSize,
                   typographyFamily,
                   typographySize,
                 }}

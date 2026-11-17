@@ -119,12 +119,55 @@ function VideoPlayerCard({
     return `${mins}:${remainder < 10 ? "0" : ""}${remainder}`;
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement) return;
+    if (e.key === " " || e.key === "k") {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === "m") {
+      e.preventDefault();
+      if (videoRef.current) {
+        videoRef.current.muted = !isMuted;
+        setIsMuted(!isMuted);
+      }
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      if (videoRef.current) {
+        const t = Math.max(0, currentTime - 5);
+        videoRef.current.currentTime = t;
+        setCurrentTime(t);
+      }
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      if (videoRef.current) {
+        const t = Math.min(duration, currentTime + 5);
+        videoRef.current.currentTime = t;
+        setCurrentTime(t);
+      }
+    } else if (e.key === "f") {
+      e.preventDefault();
+      if (videoRef.current) {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        } else {
+          videoRef.current.requestFullscreen().catch(() => {});
+        }
+      }
+    } else if (onTestimonialClick && e.key === "Enter") {
+      e.preventDefault();
+      onTestimonialClick(testimonial);
+    }
+  };
+
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <article
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
       onClick={() => onTestimonialClick?.(testimonial)}
-      className={`flex flex-col ${radiusClass} ${borderClass} bg-white dark:bg-zinc-900 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md ${
+      aria-label={`Video testimonial from ${testimonial.customer?.name || "Customer"}`}
+      className={`flex flex-col ${radiusClass} ${borderClass} bg-white dark:bg-zinc-900 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 ${
         onTestimonialClick ? "cursor-pointer" : ""
       }`}
     >
@@ -353,6 +396,13 @@ export function WidgetVideo({
   const radiusClass = getCardRadiusClasses(cardRadius);
   const spacingClass = getCardSpacingClasses(cardSpacing);
 
+  const gapClass =
+    cardSpacing === "compact"
+      ? "gap-3.5"
+      : cardSpacing === "spacious"
+      ? "gap-7"
+      : "gap-5";
+
   const gridColsClass =
     cardsPerRow === 1
       ? "grid-cols-1 max-w-xl mx-auto"
@@ -364,7 +414,7 @@ export function WidgetVideo({
     <div
       role="region"
       aria-label="Customer Video Testimonials"
-      className={`grid gap-5 ${gridColsClass} ${className}`}
+      className={`grid ${gapClass} ${gridColsClass} ${className}`}
     >
       {testimonials.map((t) => (
         <VideoPlayerCard

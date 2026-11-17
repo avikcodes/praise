@@ -4,12 +4,14 @@ import {
   WidgetCardRadius,
   WidgetCardSpacing,
   WidgetDisplayType,
+  WidgetPosition,
   WidgetThemeMode,
   WidgetTypographyFamily,
   WidgetTypographySize,
 } from "@/types/widgets";
 
 export type WidgetPublicConfig = {
+  slug?: string;
   theme?: WidgetThemeMode;
   accentColor?: string;
   primaryColor?: string;
@@ -38,6 +40,17 @@ export type WidgetPublicConfig = {
   ctaUrl?: string;
   typographyFamily?: WidgetTypographyFamily;
   typographySize?: WidgetTypographySize;
+  position?: WidgetPosition;
+  displayDelay?: number;
+  displayDuration?: number;
+  displayInterval?: number;
+  maxDisplayCount?: number;
+  sessionFrequencyLimit?: number;
+  hideOnMobile?: boolean;
+  mobilePosition?: WidgetPosition;
+  badgeStyle?: "pill" | "card" | "compact" | "minimal" | "glass";
+  avatarCount?: number;
+  avatarSize?: "sm" | "md" | "lg";
 };
 
 export type WidgetRendererProps = {

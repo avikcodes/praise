@@ -141,6 +141,7 @@ export default async function EmbedWidgetPage({
   let allowVideoPlayback = true;
   let widgetFound = false;
   let queryError = false;
+  let rawWidgetConfig: ReturnType<typeof parseWidgetConfig> | null = null;
 
   try {
     const cleanId = widgetId.trim().toLowerCase();
@@ -170,6 +171,7 @@ export default async function EmbedWidgetPage({
     if (widget) {
       widgetFound = true;
       const config = parseWidgetConfig(widget.configJson, widget.name);
+      rawWidgetConfig = config;
       widgetType = typeParam || config.widgetType || widget.type.toLowerCase();
       theme = (themeParam as typeof theme) || config.theme || "transparent";
       accentColor = accentParam || config.accentColor || "#7049D8";
@@ -322,6 +324,7 @@ export default async function EmbedWidgetPage({
         emptyTitle={emptyTitle}
         emptyMessage={emptyMessage}
         config={{
+          ...rawWidgetConfig,
           theme,
           accentColor,
           showRatings,
@@ -330,8 +333,8 @@ export default async function EmbedWidgetPage({
           showDate,
           showTags,
           allowVideoPlayback,
-          autoplay: true,
-          autoplayInterval: 5000,
+          autoplay: rawWidgetConfig?.autoplay ?? true,
+          autoplayInterval: rawWidgetConfig?.autoplayInterval ?? 5000,
         }}
       />
     </div>

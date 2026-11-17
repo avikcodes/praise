@@ -123,6 +123,9 @@ function AudioPlayerCard({
     } else if (e.key === "m") {
       e.preventDefault();
       toggleMute();
+    } else if (onTestimonialClick && e.key === "Enter") {
+      e.preventDefault();
+      onTestimonialClick(testimonial);
     }
   };
 
@@ -344,6 +347,13 @@ export function WidgetAudio({
   const radiusClass = getCardRadiusClasses(cardRadius);
   const spacingClass = getCardSpacingClasses(cardSpacing);
 
+  const gapClass =
+    cardSpacing === "compact"
+      ? "gap-3.5"
+      : cardSpacing === "spacious"
+      ? "gap-7"
+      : "gap-5";
+
   const gridColsClass =
     cardsPerRow === 1
       ? "grid-cols-1 max-w-xl mx-auto"
@@ -353,7 +363,7 @@ export function WidgetAudio({
     <div
       role="region"
       aria-label="Customer Audio Testimonials"
-      className={`grid gap-5 ${gridColsClass} ${className}`}
+      className={`grid ${gapClass} ${gridColsClass} ${className}`}
     >
       {testimonials.map((t) => (
         <AudioPlayerCard

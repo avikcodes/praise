@@ -510,11 +510,27 @@ export default function BrandPagesDashboard() {
                     {brand.selectedWallIdList.length} Walls
                   </span>
                   {brand.activeDomain ? (
-                    <span className="rounded-lg bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-bold flex items-center gap-1">
+                    <a
+                      href={`https://${brand.activeDomain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                      title="Open custom domain"
+                    >
                       <Globe size={10} />
                       <span>{brand.activeDomain}</span>
-                    </span>
-                  ) : null}
+                      <ExternalLink size={9} />
+                    </a>
+                  ) : (
+                    <Link
+                      href="/dashboard/domains"
+                      className="rounded-lg bg-sand-100/60 text-ink-500 hover:text-brand-600 hover:bg-sand-100 px-2 py-0.5 text-[10px] font-medium flex items-center gap-1 transition-colors"
+                      title="Connect custom domain"
+                    >
+                      <Globe size={10} />
+                      <span>Connect domain</span>
+                    </Link>
+                  )}
                 </div>
               </div>
 

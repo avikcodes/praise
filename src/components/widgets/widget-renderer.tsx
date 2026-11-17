@@ -11,6 +11,15 @@ import { WidgetVideo } from "./widget-video";
 import { WidgetAudio } from "./widget-audio";
 import { WidgetSingleQuote } from "./widget-single-quote";
 import { WidgetList } from "./widget-list";
+import { WidgetAvatarWall } from "./widget-avatar-wall";
+import { WidgetAvatarGrid } from "./widget-avatar-grid";
+import {
+  WidgetRatingBadge,
+  WidgetReviewCountBadge,
+  WidgetFloatingBadge,
+} from "./widget-badges";
+import { WidgetPopup } from "./widget-popup";
+import { WidgetNotification } from "./widget-notification";
 import { WidgetSkeleton } from "./widget-skeletons";
 import { WidgetEmptyState } from "./widget-empty-state";
 import { getFontFamilyCss } from "@/lib/branding/utils";
@@ -47,6 +56,60 @@ export function normalizeWidgetType(type: string): WidgetDisplayType {
     clean === "quote-card"
   ) {
     return "single_quote";
+  }
+  if (
+    clean === "avatar_wall" ||
+    clean === "avatar-wall" ||
+    clean === "face_pile" ||
+    clean === "avatars"
+  ) {
+    return "avatar_wall";
+  }
+  if (
+    clean === "avatar_grid" ||
+    clean === "avatar-grid" ||
+    clean === "customer_grid" ||
+    clean === "faces_grid"
+  ) {
+    return "avatar_grid";
+  }
+  if (
+    clean === "rating_badge" ||
+    clean === "rating-badge" ||
+    clean === "rating"
+  ) {
+    return "rating_badge";
+  }
+  if (
+    clean === "review_badge" ||
+    clean === "review-badge" ||
+    clean === "review_count" ||
+    clean === "reviews_count"
+  ) {
+    return "review_badge";
+  }
+  if (
+    clean === "floating_badge" ||
+    clean === "floating-badge" ||
+    clean === "floating"
+  ) {
+    return "floating_badge";
+  }
+  if (
+    clean === "popup" ||
+    clean === "modal" ||
+    clean === "popup_testimonial" ||
+    clean === "popup-testimonial"
+  ) {
+    return "popup";
+  }
+  if (
+    clean === "notification" ||
+    clean === "toast" ||
+    clean === "floating_notification" ||
+    clean === "floating-notification"
+  ) {
+    return "notification";
   }
   if (clean === "list") return "list";
   return "grid";
@@ -203,6 +266,62 @@ export function WidgetRenderer({
 
       {normType === "list" && (
         <WidgetList
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "avatar_wall" && (
+        <WidgetAvatarWall
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "avatar_grid" && (
+        <WidgetAvatarGrid
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "rating_badge" && (
+        <WidgetRatingBadge
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "review_badge" && (
+        <WidgetReviewCountBadge
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "floating_badge" && (
+        <WidgetFloatingBadge
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "popup" && (
+        <WidgetPopup
+          testimonials={approvedTestimonials}
+          config={config}
+          onTestimonialClick={onTestimonialClick}
+        />
+      )}
+
+      {normType === "notification" && (
+        <WidgetNotification
           testimonials={approvedTestimonials}
           config={config}
           onTestimonialClick={onTestimonialClick}

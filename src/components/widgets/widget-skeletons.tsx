@@ -306,6 +306,104 @@ export function WidgetListSkeleton({ className = "" }: SkeletonProps) {
   );
 }
 
+export function WidgetAvatarWallSkeleton({ className = "" }: SkeletonProps) {
+  return (
+    <div
+      aria-label="Loading customer avatar wall..."
+      role="status"
+      className={`w-full max-w-xl mx-auto p-4 flex flex-col items-center gap-4 animate-pulse ${className}`}
+    >
+      <div className="flex -space-x-3 overflow-hidden py-2">
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div
+            key={i}
+            className="h-12 w-12 rounded-full ring-2 ring-white dark:ring-zinc-900 bg-warm-200 dark:bg-zinc-800 shrink-0"
+          />
+        ))}
+      </div>
+      <div className="h-4 w-48 rounded bg-warm-200 dark:bg-zinc-800" />
+      <div className="h-3 w-32 rounded bg-warm-100 dark:bg-zinc-800/60" />
+    </div>
+  );
+}
+
+export function WidgetAvatarGridSkeleton({ className = "" }: SkeletonProps) {
+  return (
+    <div
+      aria-label="Loading avatar grid..."
+      role="status"
+      className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 animate-pulse ${className}`}
+    >
+      {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+        <div
+          key={i}
+          className="rounded-2xl border border-line dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-4 flex flex-col items-center space-y-3"
+        >
+          <div className="h-11 w-11 rounded-full bg-warm-200 dark:bg-zinc-800" />
+          <div className="h-3 w-20 rounded bg-warm-200 dark:bg-zinc-800" />
+          <div className="h-2 w-16 rounded bg-warm-100 dark:bg-zinc-800/60" />
+          <div className="h-2 w-full rounded bg-warm-100 dark:bg-zinc-800/60 mt-1" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function WidgetBadgeSkeleton({ className = "" }: SkeletonProps) {
+  return (
+    <div
+      aria-label="Loading badge..."
+      role="status"
+      className={`inline-flex items-center gap-3 px-4 py-2 rounded-full border border-line dark:border-zinc-800 bg-white dark:bg-zinc-900/60 animate-pulse ${className}`}
+    >
+      <div className="h-4 w-12 rounded bg-warm-200 dark:bg-zinc-800" />
+      <div className="h-3.5 w-16 rounded bg-warm-100 dark:bg-zinc-800/60" />
+    </div>
+  );
+}
+
+export function WidgetPopupSkeleton({ className = "" }: SkeletonProps) {
+  return (
+    <div
+      aria-label="Loading popup testimonial..."
+      role="status"
+      className={`w-full max-w-md mx-auto rounded-2xl border border-line dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-6 space-y-4 animate-pulse ${className}`}
+    >
+      <div className="h-8 w-8 rounded-full bg-warm-200 dark:bg-zinc-800" />
+      <div className="space-y-2">
+        <div className="h-4 w-full rounded bg-warm-200 dark:bg-zinc-800" />
+        <div className="h-4 w-4/5 rounded bg-warm-200 dark:bg-zinc-800" />
+      </div>
+      <div className="flex items-center gap-3 pt-3 border-t border-line/60 dark:border-zinc-800/60">
+        <div className="h-9 w-9 rounded-full bg-warm-200 dark:bg-zinc-800" />
+        <div className="space-y-1">
+          <div className="h-3 w-24 rounded bg-warm-200 dark:bg-zinc-800" />
+          <div className="h-2 w-16 rounded bg-warm-100 dark:bg-zinc-800/60" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function WidgetNotificationSkeleton({ className = "" }: SkeletonProps) {
+  return (
+    <div
+      aria-label="Loading notification..."
+      role="status"
+      className={`w-80 rounded-xl border border-line dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-4 space-y-2 animate-pulse ${className}`}
+    >
+      <div className="flex items-center gap-2.5">
+        <div className="h-9 w-9 rounded-full bg-warm-200 dark:bg-zinc-800 shrink-0" />
+        <div className="space-y-1 flex-1">
+          <div className="h-3 w-20 rounded bg-warm-200 dark:bg-zinc-800" />
+          <div className="h-2 w-28 rounded bg-warm-100 dark:bg-zinc-800/60" />
+        </div>
+      </div>
+      <div className="h-2.5 w-full rounded bg-warm-100 dark:bg-zinc-800/60 mt-1" />
+    </div>
+  );
+}
+
 export function WidgetSkeleton({
   type = "grid",
   className = "",
@@ -319,6 +417,24 @@ export function WidgetSkeleton({
   if (normType === "slider") return <WidgetSliderSkeleton className={className} />;
   if (normType === "video" || normType === "video_grid") return <WidgetVideoSkeleton className={className} />;
   if (normType === "audio" || normType === "voice") return <WidgetAudioSkeleton className={className} />;
+  if (normType === "avatar_wall" || normType === "face_pile" || normType === "avatar-wall") {
+    return <WidgetAvatarWallSkeleton className={className} />;
+  }
+  if (normType === "avatar_grid" || normType === "avatar-grid" || normType === "customer_grid") {
+    return <WidgetAvatarGridSkeleton className={className} />;
+  }
+  if (normType === "rating_badge" || normType === "rating-badge" || normType === "review_badge" || normType === "review-badge") {
+    return <WidgetBadgeSkeleton className={className} />;
+  }
+  if (normType === "floating_badge" || normType === "floating-badge") {
+    return <WidgetBadgeSkeleton className={className} />;
+  }
+  if (normType === "popup" || normType === "modal") {
+    return <WidgetPopupSkeleton className={className} />;
+  }
+  if (normType === "notification" || normType === "toast") {
+    return <WidgetNotificationSkeleton className={className} />;
+  }
   if (normType === "single_quote" || normType === "quote_card" || normType === "quote") {
     return <WidgetSingleQuoteSkeleton className={className} />;
   }

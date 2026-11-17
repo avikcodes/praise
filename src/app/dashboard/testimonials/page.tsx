@@ -10,6 +10,7 @@ import {
   ArrowUpDown,
   Building2,
   Calendar,
+  Camera,
   Check,
   CheckCircle2,
   CheckSquare,
@@ -3140,32 +3141,50 @@ function TestimonialsContent() {
                     </div>
                   </div>
 
-                  {/* Studio Navigation Tabs */}
-                  <div className="inline-flex rounded-lg bg-warm-100 p-0.5 text-xs font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => setStudioActiveTab("subtitles")}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
-                        studioActiveTab === "subtitles"
-                          ? "bg-white text-ink-900 shadow-2xs"
-                          : "text-ink-600 hover:text-ink-900"
-                      }`}
+                  {/* Studio Navigation Tabs & Studio Launcher */}
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/dashboard/video-studio?testimonialId=${selectedTestimonial.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition-colors shadow-2xs text-xs font-semibold"
                     >
-                      <FileText size={12} />
-                      <span>Subtitles &amp; Timings ({subtitleSegments.length})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStudioActiveTab("export")}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
-                        studioActiveTab === "export"
-                          ? "bg-white text-ink-900 shadow-2xs"
-                          : "text-ink-600 hover:text-ink-900"
-                      }`}
+                      <Sparkles size={12} />
+                      <span>Launch Video Studio</span>
+                    </Link>
+
+                    <Link
+                      href={`/dashboard/video-studio?testimonialId=${selectedTestimonial.id}&mode=marketing`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs text-xs font-semibold"
                     >
-                      <Sliders size={12} />
-                      <span>Export Video ({exportJobs?.length || 0})</span>
-                    </button>
+                      <Camera size={12} />
+                      <span>Marketing Graphic</span>
+                    </Link>
+
+                    <div className="inline-flex rounded-lg bg-warm-100 p-0.5 text-xs font-semibold">
+                      <button
+                        type="button"
+                        onClick={() => setStudioActiveTab("subtitles")}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
+                          studioActiveTab === "subtitles"
+                            ? "bg-white text-ink-900 shadow-2xs"
+                            : "text-ink-600 hover:text-ink-900"
+                        }`}
+                      >
+                        <FileText size={12} />
+                        <span>Subtitles &amp; Timings ({subtitleSegments.length})</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStudioActiveTab("export")}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${
+                          studioActiveTab === "export"
+                            ? "bg-white text-ink-900 shadow-2xs"
+                            : "text-ink-600 hover:text-ink-900"
+                        }`}
+                      >
+                        <Sliders size={12} />
+                        <span>Quick Export ({exportJobs?.length || 0})</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 

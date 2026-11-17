@@ -499,15 +499,13 @@ export function BrandProfileClient({ data, previewMode = false }: BrandProfileCl
             © {new Date().getFullYear()} {data.name}. All verified customer stories preserved with Praise.
           </div>
 
-          <a
-            href="https://praise.local"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-500 hover:text-brand-600 transition-colors"
           >
             <span>Powered by</span>
             <PraiseLogo size="sm" />
-          </a>
+          </Link>
         </div>
       </footer>
     </div>

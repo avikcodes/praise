@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   ExternalLink,
+  Film,
   FolderKanban,
   Gift,
   HardDrive,
@@ -39,6 +40,7 @@ const navigationItems: NavItem[] = [
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { label: "Projects", href: "/dashboard/projects", icon: FolderKanban },
   { label: "Testimonials", href: "/dashboard/testimonials", icon: MessageSquareQuote },
+  { label: "Video Studio", href: "/dashboard/video-studio", icon: Film, badge: "Studio", badgeVariant: "brand" },
   { label: "Forms", href: "/dashboard/forms", icon: Inbox },
   { label: "Customers", href: "/dashboard/customers", icon: Users2 },
   { label: "Invitations", href: "/dashboard/invitations", icon: Mail },

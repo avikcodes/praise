@@ -79,8 +79,15 @@ export function WidgetMasonry({
         return (
           <article
             key={t.id}
+            tabIndex={onTestimonialClick ? 0 : undefined}
+            onKeyDown={(e) => {
+              if (onTestimonialClick && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                onTestimonialClick(t);
+              }
+            }}
             onClick={() => onTestimonialClick?.(t)}
-            className={`break-inside-avoid inline-block w-full ${radiusClass} ${borderClass} ${spacingClass} bg-white dark:bg-zinc-900/90 shadow-2xs hover:shadow-md transition-all duration-200 ${
+            className={`break-inside-avoid inline-block w-full ${radiusClass} ${borderClass} ${spacingClass} bg-white dark:bg-zinc-900/90 shadow-2xs hover:shadow-md transition-all duration-200 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 ${
               onTestimonialClick ? "cursor-pointer" : ""
             } ${
               t.isFeatured && showFeaturedBadge

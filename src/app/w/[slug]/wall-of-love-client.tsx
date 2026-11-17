@@ -13,13 +13,16 @@ import {
   Layers,
   List,
   MessageSquareQuote,
+  Mic,
   Moon,
   Quote,
   Search,
   Share2,
+  SlidersHorizontal,
   Sparkles,
   Star,
   Sun,
+  Video,
 } from "lucide-react";
 import { TestimonialMedia } from "@/components/ui/testimonial-media";
 import { PraiseLogo } from "@/components/brand";
@@ -435,6 +438,39 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
                 title="Interactive Carousel"
               >
                 <span className="text-[10px] font-bold px-0.5">Slides</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode("slider")}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "slider"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
+                title="Slider View"
+              >
+                <SlidersHorizontal size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode("video")}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "video"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
+                title="Video Testimonials"
+              >
+                <Video size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutMode("audio")}
+                className={`p-1.5 rounded-md transition-colors ${layoutMode === "audio"
+                  ? "bg-brand-500 text-white shadow-2xs"
+                  : `${subtleText} hover:bg-warm-100/40`
+                  }`}
+                title="Audio Testimonials"
+              >
+                <Mic size={14} />
               </button>
               <button
                 type="button"
