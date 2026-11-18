@@ -142,6 +142,8 @@ export default async function EmbedWidgetPage({
   let widgetFound = false;
   let queryError = false;
   let rawWidgetConfig: ReturnType<typeof parseWidgetConfig> | null = null;
+  let resolvedWidgetId: string | undefined = undefined;
+  let resolvedWorkspaceId: string | undefined = undefined;
 
   try {
     const cleanId = widgetId.trim().toLowerCase();
@@ -170,6 +172,8 @@ export default async function EmbedWidgetPage({
 
     if (widget) {
       widgetFound = true;
+      resolvedWidgetId = widget.id;
+      resolvedWorkspaceId = widget.workspaceId;
       const config = parseWidgetConfig(widget.configJson, widget.name);
       rawWidgetConfig = config;
       widgetType = typeParam || config.widgetType || widget.type.toLowerCase();
@@ -276,7 +280,7 @@ export default async function EmbedWidgetPage({
           workspaceId: widget.workspaceId,
           targetType: "WIDGET",
           targetId: widget.id,
-          eventType: "VIEW",
+          eventType: "IMPRESSION",
         }).catch(() => {});
       }
     }
@@ -325,6 +329,8 @@ export default async function EmbedWidgetPage({
         emptyMessage={emptyMessage}
         config={{
           ...rawWidgetConfig,
+          widgetId: resolvedWidgetId,
+          workspaceId: resolvedWorkspaceId,
           theme,
           accentColor,
           showRatings,

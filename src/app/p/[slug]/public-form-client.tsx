@@ -14,6 +14,7 @@ import {
   ExternalLink,
   FileText,
   Gift,
+  Globe,
   Info,
   Loader2,
   Mic,
@@ -47,9 +48,23 @@ import {
 import { PraiseLogo } from "@/components/brand";
 import { RewardWheel } from "@/components/rewards/reward-wheel";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_LANGUAGE,
+  getLanguageConfig,
+  isValidLanguageCode,
+  LanguageConfig,
+  formatDate,
+  formatNumber,
+  formatRelativeTime,
+} from "@/lib/i18n/config";
+import { FormDictionary, getDictionary } from "@/lib/i18n/dictionaries";
+import { resolveLocalizedForm, FormTranslationItem } from "@/lib/i18n/form-resolver";
 
 type PublicFormClientProps = {
   form: CollectionFormDetail;
+  initialTranslations?: FormTranslationItem[];
+  requestedLang?: string | null;
+  availableLanguages?: LanguageConfig[];
 };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -108,10 +123,55 @@ function uploadMediaWithProgress(
   });
 }
 
-export function PublicFormClient({ form }: PublicFormClientProps) {
+export function PublicFormClient({
+  form,
+  initialTranslations = [],
+  requestedLang,
+  availableLanguages: passedLanguages,
+}: PublicFormClientProps) {
   // Anti-abuse tracking (initialized with current timestamp)
   const [formLoadedAt] = useState<number>(() => Date.now());
   const [honeypot, setHoneypot] = useState("");
+
+  // Localization state
+  const [currentLang, setCurrentLang] = useState<string>(() => {
+    const r = requestedLang?.toLowerCase().trim();
+    if (r && isValidLanguageCode(r)) return r;
+    return (form as any).defaultLanguage || DEFAULT_LANGUAGE;
+  });
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+
+  // Compute resolved localized form, dictionary, active language, and text direction
+  const {
+    form: localizedForm,
+    activeLanguage,
+    availableLanguages: computedAvailableLanguages,
+    dictionary,
+    direction,
+  } = useMemo(() => {
+    return resolveLocalizedForm(form, currentLang, initialTranslations || []);
+  }, [form, currentLang, initialTranslations]);
+
+  const availableLanguages =
+    passedLanguages && passedLanguages.length > 0
+      ? passedLanguages
+      : computedAvailableLanguages;
+
+  const handleLanguageChange = (newLangCode: string) => {
+    setCurrentLang(newLangCode);
+    setIsLangMenuOpen(false);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      const baseDefaultLang = (form as any).defaultLanguage || DEFAULT_LANGUAGE;
+      if (newLangCode === baseDefaultLang) {
+        url.searchParams.delete("lang");
+        url.searchParams.delete("locale");
+      } else {
+        url.searchParams.set("lang", newLangCode);
+      }
+      window.history.replaceState({}, "", url.toString());
+    }
+  };
 
   // Form input state
   const [activeTab, setActiveTab] = useState<"text" | "video" | "audio">("text");
@@ -308,36 +368,36 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
   const validateFieldId = (fieldId: string, errors: Record<string, string>) => {
     if (fieldId === "STANDARD_NAME") {
       if (form.collectName && form.nameRequired && !customerName.trim()) {
-        errors.name = "Your full name is required.";
+        errors.name = dictionary.requiredError.replace("{field}", dictionary.fullNameLabel);
       }
     } else if (fieldId === "STANDARD_EMAIL") {
       if (form.collectEmail) {
         if (form.emailRequired && !customerEmail.trim()) {
-          errors.email = "Your email address is required.";
+          errors.email = dictionary.requiredError.replace("{field}", dictionary.emailLabel);
         } else if (customerEmail.trim() && !EMAIL_REGEX.test(customerEmail.trim())) {
-          errors.email = "Please enter a valid email address (e.g. name@domain.com).";
+          errors.email = dictionary.invalidEmailError;
         }
       }
     } else if (fieldId === "STANDARD_COMPANY") {
       if (form.collectCompany && form.companyRequired && !customerCompany.trim()) {
-        errors.company = "Company name is required.";
+        errors.company = dictionary.requiredError.replace("{field}", dictionary.companyLabel);
       }
     } else if (fieldId === "STANDARD_JOB_TITLE") {
       if (form.collectJobTitle && form.jobTitleRequired && !customerTitle.trim()) {
-        errors.jobTitle = "Job title is required.";
+        errors.jobTitle = dictionary.requiredError.replace("{field}", dictionary.jobTitleLabel);
       }
     } else if (fieldId === "STANDARD_WEBSITE") {
       if (form.collectWebsite && form.websiteRequired && !customerWebsite.trim()) {
-        errors.website = "Website or social profile is required.";
+        errors.website = dictionary.requiredError.replace("{field}", dictionary.websiteLabel);
       }
     } else if (fieldId === "STANDARD_RATING") {
       if (form.collectRating && form.ratingRequired && (!rating || rating < 1)) {
-        errors.rating = "Please select a star rating.";
+        errors.rating = dictionary.requiredError.replace("{field}", dictionary.ratingLabel);
       }
     } else if (fieldId === "STANDARD_TEXT") {
       if (form.collectText && activeTab === "text") {
         if (form.textRequired && !content.trim()) {
-          errors.content = "Please write your testimonial or feedback.";
+          errors.content = dictionary.requiredError.replace("{field}", dictionary.feedbackLabel);
         }
       }
       if (activeTab === "video") {
@@ -352,13 +412,17 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
       }
     } else if (fieldId === "STANDARD_CONSENT") {
       if (form.collectConsent && form.consentRequired && !isConsentGranted) {
-        errors.consent = "You must grant permission before submitting.";
+        errors.consent = dictionary.consentRequiredError;
       }
     } else {
       // Custom questions
-      const customField = form.fields?.find(
-        (f, idx) => f.id === fieldId || `custom_${idx}` === fieldId || `q-${idx}` === fieldId,
-      );
+      const customField =
+        localizedForm.fields?.find(
+          (f, idx) => f.id === fieldId || `custom_${idx}` === fieldId || `q-${idx}` === fieldId,
+        ) ||
+        form.fields?.find(
+          (f, idx) => f.id === fieldId || `custom_${idx}` === fieldId || `q-${idx}` === fieldId,
+        );
       if (customField) {
         const fieldKey = customField.id || fieldId;
         const val = customResponses[fieldKey];
@@ -369,7 +433,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
           (Array.isArray(val) && val.length === 0);
 
         if (customField.isRequired && isEmpty) {
-          errors[fieldKey] = `"${customField.label}" is required.`;
+          errors[fieldKey] = dictionary.requiredError.replace("{field}", customField.label);
           return;
         }
 
@@ -571,6 +635,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
           mediaAssetId,
           recordingQuestionsJson: form.recordingQuestionsJson || null,
           inviteToken,
+          language: currentLang,
           // Anti-abuse parameters
           honeypot,
           formLoadedAt,
@@ -668,7 +733,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
         return (
           <div key={fieldId} className="text-center space-y-1.5 py-1">
             <label className="block text-xs font-semibold text-ink-800">
-              Overall Rating {form.ratingRequired && <span className="text-rose-500">*</span>}
+              {dictionary.ratingLabel || "Overall Rating"} {form.ratingRequired && <span className="text-rose-500">*</span>}
             </label>
             <div className="inline-flex items-center gap-1">
               {[1, 2, 3, 4, 5].map((star) => {
@@ -736,7 +801,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                     )}
                   >
                     <FileText size={13} />
-                    <span>Written Review</span>
+                    <span>{dictionary.textOption || "Written Review"}</span>
                   </button>
                 )}
 
@@ -757,7 +822,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                     )}
                   >
                     <Video size={13} />
-                    <span>Record Video</span>
+                    <span>{dictionary.videoOption || "Record Video"}</span>
                   </button>
                 )}
 
@@ -778,7 +843,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                     )}
                   >
                     <Mic size={13} />
-                    <span>Record Voice</span>
+                    <span>{dictionary.audioOption || "Record Voice"}</span>
                   </button>
                 )}
               </div>
@@ -788,7 +853,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
             {form.collectText && activeTab === "text" && (
               <div>
                 <label htmlFor="pf-content" className="block text-xs font-semibold text-ink-900 mb-1">
-                  Your Testimonial {form.textRequired && <span className="text-rose-500">*</span>}
+                  {dictionary.feedbackLabel || "Your Testimonial"} {form.textRequired && <span className="text-rose-500">*</span>}
                 </label>
                 <textarea
                   id="pf-content"
@@ -799,7 +864,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                     setContent(e.target.value);
                     clearFieldError("content");
                   }}
-                  placeholder="Share what you loved about working with us, key results achieved, or why you'd recommend our product..."
+                  placeholder={dictionary.feedbackPlaceholder || "Share what you loved about working with us, key results achieved, or why you'd recommend our product..."}
                   className={cn(
                     "w-full rounded-xl border p-3 text-xs text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1 leading-relaxed",
                     fieldErrors.content
@@ -822,7 +887,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                   mode="video"
                   maxDurationSeconds={form.maxVideoDurationSeconds || 120}
                   accentColor={accentColor}
-                  videoInstructions={form.videoInstructions}
+                  videoInstructions={localizedForm.videoInstructions || form.videoInstructions}
                   recordingQuestionsJson={form.recordingQuestionsJson}
                   onMediaReady={(result) => {
                     setRecordedMedia(result);
@@ -869,7 +934,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
         return (
           <div key={fieldId}>
             <label htmlFor="pf-name" className="block text-xs font-semibold text-ink-800 mb-1">
-              Your Full Name {form.nameRequired && <span className="text-rose-500">*</span>}
+              {dictionary.fullNameLabel || "Your Full Name"} {form.nameRequired && <span className="text-rose-500">*</span>}
             </label>
             <input
               id="pf-name"
@@ -880,7 +945,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 setCustomerName(e.target.value);
                 clearFieldError("name");
               }}
-              placeholder="e.g. Jane Doe"
+              placeholder={dictionary.fullNamePlaceholder || "e.g. Jane Doe"}
               className={cn(
                 "w-full rounded-lg border p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1",
                 fieldErrors.name
@@ -900,7 +965,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
         return (
           <div key={fieldId}>
             <label htmlFor="pf-email" className="block text-xs font-semibold text-ink-800 mb-1">
-              Email Address {form.emailRequired && <span className="text-rose-500">*</span>}
+              {dictionary.emailLabel || "Email Address"} {form.emailRequired && <span className="text-rose-500">*</span>}
             </label>
             <input
               id="pf-email"
@@ -911,7 +976,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 setCustomerEmail(e.target.value);
                 clearFieldError("email");
               }}
-              placeholder="e.g. jane@company.com"
+              placeholder={dictionary.emailPlaceholder || "e.g. jane@company.com"}
               className={cn(
                 "w-full rounded-lg border p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1",
                 fieldErrors.email
@@ -931,7 +996,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
         return (
           <div key={fieldId}>
             <label htmlFor="pf-company" className="block text-xs font-semibold text-ink-800 mb-1">
-              Company Name {form.companyRequired && <span className="text-rose-500">*</span>}
+              {dictionary.companyLabel || "Company Name"} {form.companyRequired && <span className="text-rose-500">*</span>}
             </label>
             <input
               id="pf-company"
@@ -942,7 +1007,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 setCustomerCompany(e.target.value);
                 clearFieldError("company");
               }}
-              placeholder="e.g. Acme Studio"
+              placeholder={dictionary.companyPlaceholder || "e.g. Acme Studio"}
               className={cn(
                 "w-full rounded-lg border p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1",
                 fieldErrors.company
@@ -962,7 +1027,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
         return (
           <div key={fieldId}>
             <label htmlFor="pf-job" className="block text-xs font-semibold text-ink-800 mb-1">
-              Job Title {form.jobTitleRequired && <span className="text-rose-500">*</span>}
+              {dictionary.jobTitleLabel || "Job Title"} {form.jobTitleRequired && <span className="text-rose-500">*</span>}
             </label>
             <input
               id="pf-job"
@@ -973,7 +1038,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 setCustomerTitle(e.target.value);
                 clearFieldError("jobTitle");
               }}
-              placeholder="e.g. Head of Growth"
+              placeholder={dictionary.jobTitlePlaceholder || "e.g. Head of Growth"}
               className={cn(
                 "w-full rounded-lg border p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1",
                 fieldErrors.jobTitle
@@ -993,7 +1058,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
         return (
           <div key={fieldId} className="sm:col-span-2">
             <label htmlFor="pf-web" className="block text-xs font-semibold text-ink-800 mb-1">
-              Website or Social Profile {form.websiteRequired && <span className="text-rose-500">*</span>}
+              {dictionary.websiteLabel || "Website or Social Profile"} {form.websiteRequired && <span className="text-rose-500">*</span>}
             </label>
             <input
               id="pf-web"
@@ -1004,7 +1069,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 setCustomerWebsite(e.target.value);
                 clearFieldError("website");
               }}
-              placeholder="https://company.com or @username"
+              placeholder={dictionary.websitePlaceholder || "https://company.com or @username"}
               className={cn(
                 "w-full rounded-lg border p-2 text-xs text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-1",
                 fieldErrors.website
@@ -1066,8 +1131,9 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                   className="mt-0.5 h-4 w-4 rounded border-line text-brand-600 focus:ring-brand-500"
                 />
                 <span className="leading-relaxed">
-                  {form.consentText ||
-                    "I grant permission to use my feedback, name, and company on public websites and testimonial widgets."}{" "}
+                  {localizedForm.consentText ||
+                    form.consentText ||
+                    dictionary.consentCheckboxDefault}{" "}
                   {form.consentRequired && <span className="text-rose-500 font-semibold">*</span>}
                 </span>
               </label>
@@ -1142,9 +1208,13 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
 
       default: {
         // Custom Questions
-        const customField = form.fields?.find(
-          (f, idx) => f.id === fieldId || `custom_${idx}` === fieldId || `q-${idx}` === fieldId,
-        );
+        const customField =
+          localizedForm.fields?.find(
+            (f, idx) => f.id === fieldId || `custom_${idx}` === fieldId || `q-${idx}` === fieldId,
+          ) ||
+          form.fields?.find(
+            (f, idx) => f.id === fieldId || `custom_${idx}` === fieldId || `q-${idx}` === fieldId,
+          );
         if (!customField) return null;
         const fieldKey = customField.id || fieldId;
         const options = parseOptions(customField.optionsJson);
@@ -1625,7 +1695,10 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
         <div className="pb-4 pt-1 border-b border-line/60 space-y-1.5">
           <div className="flex items-center justify-between text-[11px] font-medium text-ink-600">
             <span>
-              Step {currentNumber} of {totalSteps}: {currentStep?.title}
+              {dictionary.stepIndicator
+                .replace("{current}", String(currentNumber))
+                .replace("{total}", String(totalSteps))}
+              : {currentStep?.title}
             </span>
             <span className="font-semibold text-brand-600">{progressPercent}%</span>
           </div>
@@ -1644,7 +1717,9 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
       <div className="pb-4 pt-1 border-b border-line/60 space-y-1">
         <div className="flex items-center justify-between text-[10px] text-ink-500 uppercase tracking-wider font-semibold">
           <span>
-            Step {currentNumber} of {totalSteps}
+            {dictionary.stepIndicator
+              .replace("{current}", String(currentNumber))
+              .replace("{total}", String(totalSteps))}
           </span>
           <span>{currentStep?.title}</span>
         </div>
@@ -1659,10 +1734,85 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
   };
 
   return (
-    <div className="min-h-screen bg-warm-50/80 py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+    <div
+      className="min-h-screen bg-warm-50/80 py-8 px-4 sm:px-6 lg:px-8 flex items-center justify-center"
+      dir={direction}
+      lang={activeLanguage.code}
+    >
       <div className="praise-form-scope w-full max-w-xl rounded-2xl border border-line bg-white p-6 sm:p-8 shadow-sm">
         {/* Form Scoped Custom CSS */}
         {scopedCss && <style dangerouslySetInnerHTML={{ __html: scopedCss }} />}
+
+        {/* Language Selector Top Bar */}
+        {availableLanguages.length > 1 && (
+          <div className="flex justify-end pb-3 mb-2 border-b border-line/40">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsLangMenuOpen((prev) => !prev)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-warm-50/80 px-2.5 py-1 text-xs font-medium text-ink-700 hover:bg-warm-100 hover:text-ink-900 transition-colors shadow-2xs"
+                aria-haspopup="listbox"
+                aria-expanded={isLangMenuOpen}
+                aria-label={dictionary.chooseLanguage || "Change language"}
+              >
+                <Globe size={13} className="text-brand-600" />
+                <span className="text-sm leading-none">{activeLanguage.flag}</span>
+                <span>{activeLanguage.nativeName}</span>
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    "text-ink-400 transition-transform",
+                    isLangMenuOpen && "rotate-180",
+                  )}
+                />
+              </button>
+
+              {isLangMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsLangMenuOpen(false)}
+                  />
+                  <div
+                    role="listbox"
+                    className="absolute right-0 mt-1.5 w-48 rounded-xl border border-line bg-white py-1 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100"
+                  >
+                    <div className="px-3 py-1.5 text-[10px] font-semibold text-ink-400 uppercase tracking-wider border-b border-line/50">
+                      {dictionary.chooseLanguage || "Select Language"}
+                    </div>
+                    {availableLanguages.map((lang) => {
+                      const isSelected = lang.code === activeLanguage.code;
+                      return (
+                        <button
+                          key={lang.code}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => handleLanguageChange(lang.code)}
+                          className={cn(
+                            "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors",
+                            isSelected
+                              ? "bg-brand-50 text-brand-700 font-semibold"
+                              : "text-ink-700 hover:bg-warm-50",
+                          )}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="text-base leading-none">{lang.flag}</span>
+                            <span>{lang.nativeName}</span>
+                            {lang.code !== "en" && (
+                              <span className="text-[10px] text-ink-400">({lang.name})</span>
+                            )}
+                          </span>
+                          {isSelected && <Check size={13} className="text-brand-600" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Header / Branding */}
         <div className="text-center pb-5 border-b border-line/70">
@@ -1672,7 +1822,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={form.customLogoUrl}
-                  alt={`${form.title} logo`}
+                  alt={`${localizedForm.title} logo`}
                   className="max-h-10 object-contain mx-auto"
                 />
               </div>
@@ -1681,14 +1831,14 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
             )}
           </div>
           <h1 className="text-xl sm:text-2xl font-bold text-ink-900 tracking-tight">
-            {form.title}
+            {localizedForm.title}
           </h1>
           <p className="mt-1.5 text-xs sm:text-sm text-ink-600 max-w-md mx-auto leading-relaxed">
-            {form.headerPrompt}
+            {localizedForm.headerPrompt}
           </p>
-          {form.description && (
+          {localizedForm.description && (
             <p className="mt-1 text-xs text-ink-400 max-w-sm mx-auto">
-              {form.description}
+              {localizedForm.description}
             </p>
           )}
 
@@ -1732,10 +1882,12 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
 
             <div className="space-y-1.5">
               <h2 className="text-xl font-bold text-ink-900">
-                Thank You for Your Feedback!
+                {dictionary.thankYouHeading || "Thank You for Your Feedback!"}
               </h2>
               <p className="text-xs sm:text-sm text-ink-600 max-w-sm mx-auto leading-relaxed">
-                {form.thankYouMessage ||
+                {localizedForm.thankYouMessage ||
+                  form.thankYouMessage ||
+                  dictionary.thankYouDefaultMessage ||
                   "Your testimonial has been submitted successfully and received for review."}
               </p>
             </div>
@@ -2016,7 +2168,7 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                   className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-white px-4 py-2.5 text-xs font-semibold text-ink-700 hover:bg-warm-50 transition-colors shadow-2xs disabled:opacity-50"
                 >
                   <ArrowLeft size={13} />
-                  <span>Previous</span>
+                  <span>{dictionary.previousStep || "Previous"}</span>
                 </button>
               ) : (
                 <div />
@@ -2032,10 +2184,10 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 {isSubmitting && <Loader2 size={13} className="animate-spin" />}
                 <span>
                   {flowConfig && resolveNextStepId(effectiveStepId, flowConfig, formValuesMap) !== "SUBMIT"
-                    ? "Next Step"
+                    ? dictionary.nextStep || "Next Step"
                     : isSubmitting
-                    ? "Submitting Testimonial..."
-                    : "Submit Testimonial"}
+                    ? dictionary.submittingButton || "Submitting Testimonial..."
+                    : dictionary.submitButton || "Submit Testimonial"}
                 </span>
                 {!isSubmitting && flowConfig && resolveNextStepId(effectiveStepId, flowConfig, formValuesMap) !== "SUBMIT" && (
                   <ArrowRight size={13} />
@@ -2106,12 +2258,12 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
             </div>
 
             {/* Custom Questions Section */}
-            {form.fields && form.fields.length > 0 && (
+            {localizedForm.fields && localizedForm.fields.length > 0 && (
               <div className="space-y-4 pt-2 border-t border-line/70">
                 <div className="text-[11px] font-semibold text-ink-500 uppercase tracking-wider">
                   Additional Questions
                 </div>
-                {form.fields.map((field: FormFieldItem, idx: number) =>
+                {localizedForm.fields.map((field: FormFieldItem, idx: number) =>
                   renderFieldInput(field.id || `custom_${idx}`),
                 )}
               </div>
@@ -2148,7 +2300,11 @@ export function PublicFormClient({ form }: PublicFormClientProps) {
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl py-2.5 px-4 text-xs font-semibold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {isSubmitting && <Loader2 size={14} className="animate-spin" />}
-                <span>{isSubmitting ? "Submitting Testimonial..." : "Submit Testimonial"}</span>
+                <span>
+                  {isSubmitting
+                    ? dictionary.submittingButton || "Submitting Testimonial..."
+                    : dictionary.submitButton || "Submit Testimonial"}
+                </span>
               </button>
             </div>
 

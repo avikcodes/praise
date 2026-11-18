@@ -28,6 +28,7 @@ import {
   WorkspaceItem,
   useWorkspace,
 } from "@/components/dashboard/workspace-context";
+import { SUPPORTED_LANGUAGES } from "@/lib/i18n/config";
 
 function WorkspaceProfileForm({
   workspace,
@@ -35,20 +36,21 @@ function WorkspaceProfileForm({
   isSaving,
 }: {
   workspace: WorkspaceItem;
-  onSave: (name: string, slug: string) => Promise<void>;
+  onSave: (name: string, slug: string, defaultLanguage?: string) => Promise<void>;
   isSaving: boolean;
 }) {
   const [workspaceName, setWorkspaceName] = useState(workspace.name);
   const [workspaceSlug, setWorkspaceSlug] = useState(workspace.slug);
+  const [defaultLanguage, setDefaultLanguage] = useState(workspace.defaultLanguage || "en");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(workspaceName, workspaceSlug);
+    onSave(workspaceName, workspaceSlug, defaultLanguage);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div>
           <label className="block text-xs font-semibold text-ink-900 mb-1">
             Workspace Name
@@ -72,6 +74,23 @@ function WorkspaceProfileForm({
             onChange={(e) => setWorkspaceSlug(e.target.value)}
             className="w-full rounded-lg border border-line p-2 text-xs font-mono text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-ink-900 mb-1">
+            Default Language
+          </label>
+          <select
+            value={defaultLanguage}
+            onChange={(e) => setDefaultLanguage(e.target.value)}
+            className="w-full rounded-lg border border-line bg-white p-2 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            {SUPPORTED_LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.flag} {lang.name} ({lang.nativeName})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -288,7 +307,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSaveGeneral = async (name: string, slug: string) => {
+  const handleSaveGeneral = async (name: string, slug: string, defaultLanguage?: string) => {
     if (!activeWorkspace) return;
     if (!name.trim()) {
       toast.error("Invalid name", "Workspace name cannot be empty.");
@@ -299,6 +318,7 @@ export default function SettingsPage() {
     const res = await updateWorkspace(activeWorkspace.id, {
       name: name.trim(),
       slug: slug.trim() || undefined,
+      defaultLanguage,
     });
     setIsSavingGeneral(false);
 

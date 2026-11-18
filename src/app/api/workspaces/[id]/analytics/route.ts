@@ -15,8 +15,10 @@ export async function GET(request: Request, context: RouteParams) {
     const { searchParams } = new URL(request.url);
     const periodParam = searchParams.get("period") || "30d";
     const projectId = searchParams.get("projectId") || null;
+    const startDate = searchParams.get("startDate") || null;
+    const endDate = searchParams.get("endDate") || null;
 
-    const validPeriods: AnalyticsPeriod[] = ["7d", "30d", "90d", "all"];
+    const validPeriods: AnalyticsPeriod[] = ["7d", "30d", "90d", "all", "custom"];
     const period: AnalyticsPeriod = validPeriods.includes(periodParam as AnalyticsPeriod)
       ? (periodParam as AnalyticsPeriod)
       : "30d";
@@ -25,6 +27,8 @@ export async function GET(request: Request, context: RouteParams) {
       workspaceId,
       period,
       projectId,
+      startDate,
+      endDate,
     });
 
     return NextResponse.json(analytics, {
@@ -40,4 +44,3 @@ export async function GET(request: Request, context: RouteParams) {
     );
   }
 }
-

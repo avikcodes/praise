@@ -55,6 +55,7 @@ import { AdvancedFieldModal } from "@/components/dashboard/forms/advanced-field-
 import { sanitizeCss } from "@/lib/forms/css-sanitizer";
 import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
+import { DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
 
 type FormBuilderProps = {
@@ -125,6 +126,9 @@ export function FormBuilder({
   const [slug, setSlug] = useState(initialForm?.slug || "customer-feedback");
   const [description, setDescription] = useState(initialForm?.description || "");
   const [projectId, setProjectId] = useState<string>(initialForm?.projectId || "");
+  const [defaultLanguage, setDefaultLanguage] = useState(
+    initialForm?.defaultLanguage || activeWorkspace?.defaultLanguage || DEFAULT_LANGUAGE,
+  );
   const [headerPrompt, setHeaderPrompt] = useState(
     initialForm?.headerPrompt || "How has our product helped your team succeed?",
   );
@@ -458,6 +462,7 @@ export function FormBuilder({
       slug: (slug || title).trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-"),
       description: description.trim() || undefined,
       projectId: projectId || null,
+      defaultLanguage,
       headerPrompt: headerPrompt.trim(),
       thankYouMessage: thankYouMessage.trim() || undefined,
       allowVideo,
@@ -757,7 +762,7 @@ export function FormBuilder({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-ink-900 mb-1">
                       Public URL Slug *
@@ -785,6 +790,23 @@ export function FormBuilder({
                       {projects.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-ink-900 mb-1">
+                      Base Form Language
+                    </label>
+                    <select
+                      value={defaultLanguage}
+                      onChange={(e) => setDefaultLanguage(e.target.value)}
+                      className="w-full rounded-lg border border-line bg-white p-2 text-xs text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    >
+                      {SUPPORTED_LANGUAGES.map((l) => (
+                        <option key={l.code} value={l.code}>
+                          {l.flag} {l.name} ({l.nativeName})
                         </option>
                       ))}
                     </select>

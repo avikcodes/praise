@@ -78,6 +78,7 @@ export type CollectionFormDetail = {
   description?: string | null;
   headerPrompt: string;
   thankYouMessage?: string | null;
+  defaultLanguage?: string;
   allowVideo: boolean;
   allowAudio: boolean;
   allowText: boolean;

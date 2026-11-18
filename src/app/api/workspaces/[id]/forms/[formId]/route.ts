@@ -117,6 +117,7 @@ export async function PUT(request: Request, context: RouteParams) {
       customCss,
       videoInstructions,
       recordingQuestionsJson,
+      defaultLanguage,
       fields,
     } = validated.data;
 
@@ -194,6 +195,7 @@ export async function PUT(request: Request, context: RouteParams) {
           videoInstructions: videoInstructions !== undefined ? videoInstructions : existing.videoInstructions,
           recordingQuestionsJson: recordingQuestionsJson !== undefined ? recordingQuestionsJson : existing.recordingQuestionsJson,
           isPublished: isPublished ?? existing.isPublished,
+          defaultLanguage: defaultLanguage ?? existing.defaultLanguage,
           projectId: projectId !== undefined ? projectId : existing.projectId,
         },
       });

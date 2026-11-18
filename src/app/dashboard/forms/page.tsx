@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -33,6 +33,7 @@ import { useToast } from "@/components/dashboard/toast-context";
 import { useWorkspace } from "@/components/dashboard/workspace-context";
 import { CollectionFormDetail } from "@/types/form-builder";
 import { FormBuilder } from "@/components/dashboard/forms/form-builder";
+import { FormLanguagesModal } from "@/components/dashboard/forms/form-languages-modal";
 import { cn } from "@/lib/utils";
 
 export default function FormsPage() {
@@ -55,6 +56,7 @@ export default function FormsPage() {
   const [shareForm, setShareForm] = useState<CollectionFormDetail | null>(null);
   const [deletingForm, setDeletingForm] = useState<CollectionFormDetail | null>(null);
   const [regeneratingSlugForm, setRegeneratingSlugForm] = useState<CollectionFormDetail | null>(null);
+  const [languagesModalForm, setLanguagesModalForm] = useState<CollectionFormDetail | null>(null);
 
   const [isDuplicatingId, setIsDuplicatingId] = useState<string | null>(null);
   const [isUpdatingStatusId, setIsUpdatingStatusId] = useState<string | null>(null);
@@ -73,37 +75,30 @@ export default function FormsPage() {
     activeWorkspace?.role === "OWNER" || activeWorkspace?.role === "ADMIN";
 
   // Fetch forms from API when activeWorkspace changes
-  useEffect(() => {
+  const fetchForms = useCallback(async () => {
     const wsId = activeWorkspace?.id;
     if (!wsId || wsId.startsWith("ws-default")) {
       return;
     }
 
-    let isMounted = true;
-    async function fetchForms() {
-      try {
-        const res = await fetch(`/api/workspaces/${wsId}/forms`);
-        if (!isMounted) return;
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.forms)) {
-            setForms(data.forms);
-          }
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
+    try {
+      const res = await fetch(`/api/workspaces/${wsId}/forms`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.forms)) {
+          setForms(data.forms);
         }
       }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoading(false);
     }
-
-    fetchForms();
-    return () => {
-      isMounted = false;
-    };
   }, [activeWorkspace?.id]);
+
+  useEffect(() => {
+    fetchForms();
+  }, [fetchForms]);
 
   // Open Management Hub
   const openManageHub = (form: CollectionFormDetail) => {
@@ -586,6 +581,15 @@ export default function FormsPage() {
                           ) : (
                             <Copy size={13} />
                           )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setLanguagesModalForm(form)}
+                          className="rounded p-1.5 text-ink-500 hover:bg-warm-100 hover:text-brand-600 transition-colors"
+                          title="Language variants & translations"
+                        >
+                          <Globe size={13} />
                         </button>
 
                         <button
@@ -1155,6 +1159,15 @@ export default function FormsPage() {
         message={`Are you sure you want to regenerate the public link slug for "${regeneratingSlugForm?.title}"? Any existing links sent to customers or embedded on your site will stop working immediately.`}
         confirmLabel={isRegeneratingSlug ? "Regenerating..." : "Yes, Regenerate Slug"}
         isDestructive
+      />
+
+      {/* Form Languages & Localization Modal */}
+      <FormLanguagesModal
+        isOpen={languagesModalForm !== null}
+        onClose={() => setLanguagesModalForm(null)}
+        form={languagesModalForm}
+        workspaceId={activeWorkspace?.id || ""}
+        onUpdate={fetchForms}
       />
 
       {/* Delete Form Confirmation Dialog */}

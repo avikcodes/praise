@@ -11,6 +11,8 @@ import {
 } from "@/types/widgets";
 
 export type WidgetPublicConfig = {
+  widgetId?: string;
+  workspaceId?: string;
   slug?: string;
   theme?: WidgetThemeMode;
   accentColor?: string;

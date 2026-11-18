@@ -150,10 +150,42 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
       body: JSON.stringify({
         targetType: "WIDGET",
         targetId: data.widgetId,
-        eventType: "INTERACT",
+        eventType: "INTERACTION",
         workspaceId: data.workspace?.id,
         slug: data.slug,
         metadata: { target },
+      }),
+    }).catch(() => { });
+  };
+
+  const trackCta = (label?: string, url?: string) => {
+    if (typeof window === "undefined" || !data.widgetId) return;
+    fetch("/api/analytics/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targetType: "WIDGET",
+        targetId: data.widgetId,
+        eventType: "CTA_CLICK",
+        workspaceId: data.workspace?.id,
+        slug: data.slug,
+        metadata: { ctaText: label, ctaUrl: url },
+      }),
+    }).catch(() => { });
+  };
+
+  const trackTestimonial = (testimonialId: string) => {
+    if (typeof window === "undefined" || !data.widgetId) return;
+    fetch("/api/analytics/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        targetType: "WIDGET",
+        targetId: data.widgetId,
+        testimonialId,
+        eventType: "TESTIMONIAL_CLICK",
+        workspaceId: data.workspace?.id,
+        slug: data.slug,
       }),
     }).catch(() => { });
   };
@@ -334,6 +366,7 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
           {config.ctaEnabled && (
             <a
               href={config.ctaUrl || "#"}
+              onClick={() => trackCta(config.ctaLabel, config.ctaUrl)}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all"
@@ -347,6 +380,7 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
           {config.ctaSecondaryEnabled && config.ctaSecondaryUrl && (
             <a
               href={config.ctaSecondaryUrl}
+              onClick={() => trackCta(config.ctaSecondaryLabel, config.ctaSecondaryUrl)}
               target="_blank"
               rel="noreferrer"
               className={`inline-flex items-center gap-1.5 rounded-xl border ${borderLine} px-4 py-2.5 text-sm font-semibold hover:bg-warm-100/50 transition-colors`}
@@ -534,6 +568,8 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
               type={layoutMode}
               testimonials={filteredTestimonials}
               config={{
+                widgetId: data.widgetId,
+                workspaceId: data.workspace?.id,
                 theme: (activeTheme === "dark" || activeTheme === "midnight"
                   ? "dark"
                   : activeTheme === "light" || activeTheme === "minimal"
@@ -570,6 +606,7 @@ export function WallOfLoveClient({ data }: WallOfLoveClientProps) {
                 subtleText={subtleText}
                 isDark={isDark}
                 isMasonry={layoutMode === "masonry"}
+                onCardClick={() => trackTestimonial(t.id)}
               />
             ))}
           </div>
@@ -635,6 +672,7 @@ function TestimonialCard({
   subtleText,
   isDark,
   isMasonry,
+  onCardClick,
 }: {
   testimonial: PublicTestimonialCard;
   config: PublicWallOfLoveData["config"];
@@ -643,6 +681,7 @@ function TestimonialCard({
   subtleText: string;
   isDark: boolean;
   isMasonry: boolean;
+  onCardClick?: () => void;
 }) {
   const { customer, rating, content, isFeatured, submittedAt, media, tags } = testimonial;
 
@@ -656,8 +695,9 @@ function TestimonialCard({
 
   return (
     <article
+      onClick={onCardClick}
       aria-label={`Customer review by ${customer.name}`}
-      className={`${radiusClass} ${borderClass} ${cardBg} p-5 transition-all hover:shadow-md ${isMasonry ? "break-inside-avoid mb-5" : ""
+      className={`${radiusClass} ${borderClass} ${cardBg} p-5 transition-all hover:shadow-md cursor-pointer ${isMasonry ? "break-inside-avoid mb-5" : ""
         } ${isFeatured && config.showFeaturedBadge ? "ring-2 ring-brand-400/50" : ""}`}
     >
       {/* Top Header: Customer Info + Featured Badge */}

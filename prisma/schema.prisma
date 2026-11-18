@@ -85,8 +85,13 @@ enum WidgetTheme {
 
 enum WidgetEventType {
   IMPRESSION
+  VIEW
   INTERACTION
+  CTA_CLICK
+  TESTIMONIAL_CLICK
   VIDEO_PLAY
+  VIDEO_PROGRESS
+  VIDEO_COMPLETE
 }
 
 enum TranscriptionStatus {
@@ -158,6 +163,8 @@ model Workspace {
   name           String
   slug           String            @unique
   logoUrl        String?
+  defaultLanguage String           @default("en")
+  supportedLanguagesJson String?   @default("[\"en\"]")
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -206,6 +213,10 @@ model Workspace {
   surveyResponses SurveyResponse[]
   surveyRoutingRules SurveyRoutingRule[]
   surveyRoutingLogs SurveyRoutingLog[]
+  caseStudyForms CaseStudyForm[]
+  caseStudyTemplates CaseStudyTemplate[]
+  caseStudyResponses CaseStudyResponse[]
+  customerStories CustomerStory[]
 
   @@index([slug])
   @@map("workspaces")
@@ -260,6 +271,9 @@ model Brand {
   workspace              Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   projects               Project[]
   customDomains          CustomDomain[]
+  caseStudyForms         CaseStudyForm[]
+  caseStudyResponses     CaseStudyResponse[]
+  customerStories        CustomerStory[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -275,6 +289,7 @@ model Project {
   description  String?
   logoUrl      String?
   color        String?          @default("#7049D8")
+  defaultLanguage String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -285,6 +300,9 @@ model Project {
   widgets      Widget[]
   wallsOfLove  WallOfLove[]
   surveys      Survey[]
+  caseStudyForms CaseStudyForm[]
+  caseStudyResponses CaseStudyResponse[]
+  customerStories CustomerStory[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -321,6 +339,8 @@ model Customer {
   smsInvitations       SmsRecipient[]
   rewardClaims         RewardClaim[]
   thankYous            CustomerThankYou[]
+  caseStudyResponses   CaseStudyResponse[]
+  customerStories      CustomerStory[]
 
   @@unique([workspaceId, email])
   @@index([workspaceId])
@@ -392,6 +412,7 @@ model CollectionForm {
   rewardEnabled           Boolean       @default(false)
   rewardProgramId         String?
 
+  defaultLanguage         String        @default("en")
   isPublished             Boolean       @default(true)
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
@@ -400,6 +421,7 @@ model CollectionForm {
   project                 Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   rewardProgram           RewardProgram? @relation(fields: [rewardProgramId], references: [id], onDelete: SetNull)
   fields                  FormField[]
+  translations            FormTranslation[]
   testimonials            Testimonial[]
   campaigns               EmailCampaign[]
   smsCampaigns            SmsCampaign[]
@@ -432,6 +454,33 @@ model FormField {
 
   @@index([formId])
   @@map("form_fields")
+}
+
+model FormTranslation {
+  id                    String         @id @default(cuid())
+  formId                String
+  language              String         // e.g. "es", "fr", "de", "ja", "pt"
+  title                 String
+  description           String?
+  headerPrompt          String
+  thankYouMessage       String?
+  consentText           String?
+  videoInstructions     String?
+
+  // Field translations mapped by underlying FormField ID:
+  // JSON: Record<string, { label?: string, description?: string, placeholder?: string, helpText?: string, options?: Array<{ id: string, label: string }> }>
+  fieldTranslationsJson String?
+
+  isPublished           Boolean        @default(true)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  form                  CollectionForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@unique([formId, language])
+  @@index([formId])
+  @@index([language])
+  @@map("form_translations")
 }
 
 model FormTemplate {
@@ -469,6 +518,7 @@ model Testimonial {
   type           TestimonialType   @default(TEXT)
   status         TestimonialStatus @default(PENDING)
   isFeatured     Boolean           @default(false)
+  language       String?           @default("en")
   recordingQuestionsJson String?
   // Moderation & Source Details
   sourceType             String            @default("FORM")
@@ -747,8 +797,10 @@ model WidgetEvent {
   id             String          @id @default(cuid())
   workspaceId    String
   widgetId       String
+  testimonialId  String?
   eventType      WidgetEventType @default(IMPRESSION)
   visitorCountry String?
+  metadataJson   String?
   recordedAt     DateTime        @default(now())
 
   workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -756,6 +808,7 @@ model WidgetEvent {
 
   @@index([workspaceId])
   @@index([widgetId])
+  @@index([testimonialId])
   @@index([recordedAt])
   @@map("widget_events")
 }
@@ -1728,6 +1781,241 @@ model SurveyRoutingLog {
   @@index([responseId])
   @@index([executedAt])
   @@map("survey_routing_logs")
+}
+
+// -----------------------------------------------------------------------------
+// 21. Case Study Collection & Response Management
+// -----------------------------------------------------------------------------
+
+model CaseStudyTemplate {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  name        String
+  description String?
+  category    String   @default("SAAS") // SAAS, ENTERPRISE, DEV_TOOLS, ECOMMERCE, GENERAL
+  isSystem    Boolean  @default(false)
+  configJson  String   // JSON string of default prompts, section questions, and settings
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  forms       CaseStudyForm[]
+
+  @@index([workspaceId])
+  @@index([category])
+  @@map("case_study_templates")
+}
+
+model CaseStudyForm {
+  id                      String   @id @default(cuid())
+  workspaceId             String
+  projectId               String?
+  brandId                 String?
+  templateId              String?
+  title                   String
+  slug                    String
+  description             String?
+  status                  String   @default("ACTIVE") // ACTIVE, PAUSED, ARCHIVED
+  templateType            String   @default("SAAS_GROWTH") // SAAS_GROWTH, ENTERPRISE_WORKFLOW, DEV_VELOCITY, ECOMMERCE_SCALE, GENERAL, CUSTOM
+
+  // Appearance & Branding
+  accentColor             String?  @default("#7049D8")
+  theme                   String   @default("warm")
+  customLogoUrl           String?
+  showBranding            Boolean  @default(true)
+  welcomeHeading          String?  @default("Share Your Success Story")
+  welcomeText             String?  @default("Help others understand how our product helped your team achieve real results.")
+  thankYouHeading         String?  @default("Thank You for Sharing Your Story!")
+  thankYouText            String?  @default("We appreciate your time and transparency. We will review your submission shortly.")
+  redirectUrl             String?
+
+  // Section Toggles
+  collectCustomerBackground Boolean @default(true)
+  collectCompanyRole        Boolean @default(true)
+  collectInitialProblem     Boolean @default(true)
+  collectPreviousSolution   Boolean @default(true)
+  collectProductImplementation Boolean @default(true)
+  collectExperience         Boolean @default(true)
+  collectResultsAchieved    Boolean @default(true)
+  collectMeasurableOutcomes Boolean @default(true)
+  collectQuotes             Boolean @default(true)
+  allowImages               Boolean @default(true)
+  allowVideo                Boolean @default(true)
+  collectConsent            Boolean @default(true)
+  consentRequired           Boolean @default(true)
+  consentText               String  @default("I grant permission to publish this case study, business results, and company quotes for marketing purposes.")
+
+  // Detailed question prompts & configuration
+  questionsConfigJson     String?  // JSON string for customized prompts, help texts, and required flags per section
+
+  submissionsCount        Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  workspace               Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                 Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  brand                   Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  template                CaseStudyTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  responses               CaseStudyResponse[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@index([projectId])
+  @@index([brandId])
+  @@map("case_study_forms")
+}
+
+model CaseStudyResponse {
+  id                     String   @id @default(cuid())
+  formId                 String
+  workspaceId            String
+  customerId             String?
+  projectId              String?
+  brandId                String?
+
+  status                 String   @default("SUBMITTED") // SUBMITTED, UNDER_REVIEW, APPROVED, PUBLISHED, ARCHIVED
+  submittedAt            DateTime @default(now())
+  reviewedAt             DateTime?
+  reviewedBy             String?
+  approvedAt             DateTime?
+  approvedBy             String?
+  publishedAt            DateTime?
+
+  // Customer's original statements (Immutable verbatim submission)
+  customerName           String
+  customerEmail          String
+  customerRole           String?
+  companyName            String
+  companySize            String?
+  companyIndustry        String?
+  companyWebsite         String?
+  avatarUrl              String?
+
+  initialProblem         String
+  previousSolution       String?
+  productImplementation  String?
+  experienceSummary      String?
+  resultsAchieved        String
+  measurableOutcomesJson String?  // JSON: Array<{ metric: string, before?: string, after?: string, improvement?: string, timeframe?: string }>
+  primaryQuote           String?
+  peerAdvice             String?
+  imageAssetIdsJson      String?  // JSON: Array<string>
+  videoAssetId           String?
+
+  consentGranted         Boolean  @default(true)
+  consentText            String
+  consentTimestamp       DateTime @default(now())
+
+  // Owner editorial content (Separated from original customer statements)
+  editorialTitle         String?
+  editorialSubtitle      String?
+  editorialSummary       String?
+  editorialTakeawaysJson String? // JSON: Array<string>
+  editorialNotes         String?
+  featuredQuoteOverride  String?
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  form                   CaseStudyForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+  workspace              Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customer               Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  project                Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  brand                  Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  customerStories        CustomerStory[]
+
+  @@index([workspaceId])
+  @@index([formId])
+  @@index([customerId])
+  @@index([projectId])
+  @@index([brandId])
+  @@index([status])
+  @@map("case_study_responses")
+}
+
+// -----------------------------------------------------------------------------
+// 22. Customer Stories (Published Case Studies)
+// -----------------------------------------------------------------------------
+
+model CustomerStory {
+  id                     String    @id @default(cuid())
+  workspaceId            String
+  responseId             String?
+  projectId              String?
+  brandId                String?
+  customerId             String?
+
+  slug                   String    @unique
+  status                 String    @default("DRAFT") // DRAFT, PUBLISHED, ARCHIVED
+  publishedAt            DateTime?
+
+  // Editorial metadata
+  title                  String
+  subtitle               String?
+  summary                String?   // Executive TL;DR / Overview
+  readingTimeMinutes     Int       @default(4)
+
+  // Customer & Company Info
+  customerName           String
+  customerTitle          String?
+  customerAvatarUrl      String?
+  companyName            String
+  companyLogoUrl         String?
+  companyWebsite         String?
+  companyIndustry        String?
+  companySize            String?
+
+  // Highlights & Quotations
+  featuredQuote          String?   // Highlighted verbatim pull-quote
+  featuredQuoteAuthor    String?
+  featuredQuoteRole      String?
+  featuredQuoteAvatar    String?
+  peerAdvice             String?   // Verbatim customer advice
+
+  // Measurable Outcomes (ONLY when supplied by customer)
+  measurableOutcomesJson String?   // JSON Array<{ metric: string, before?: string, after?: string, improvement?: string, timeframe?: string }>
+
+  // Key Takeaways & Structured Editorial Narrative Sections
+  keyTakeawaysJson       String?   // JSON Array<string>
+  sectionsJson           String    // JSON Array<{ id: string, type: string, title?: string, content?: string, quote?: string, mediaUrl?: string, caption?: string }>
+
+  // Media
+  coverImageUrl          String?
+  videoUrl               String?
+  approvedMediaJson      String?   // JSON Array<{ id: string, url: string, type: string, caption?: string }>
+
+  // Styling & Themes
+  theme                  String    @default("warm") // light, warm, dark, editorial
+  accentColor            String    @default("#4f46e5")
+  customCtaText          String?
+  customCtaUrl           String?
+
+  // SEO & OpenGraph
+  seoTitle               String?
+  seoDescription         String?
+  ogImageUrl             String?
+
+  // Permission & Compliance Verification
+  permissionVerified     Boolean   @default(false)
+  permissionNotes        String?   // Stored proof of consent text and timestamp
+
+  viewsCount             Int       @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  workspace              Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  response               CaseStudyResponse? @relation(fields: [responseId], references: [id], onDelete: SetNull)
+  project                Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  brand                  Brand?             @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  customer               Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([responseId])
+  @@index([projectId])
+  @@index([brandId])
+  @@index([status])
+  @@map("customer_stories")
 }
 
 

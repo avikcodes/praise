@@ -13,12 +13,19 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { PublicTestimonialMedia } from "@/types/widgets";
+import {
+  trackVideoPlay,
+  trackVideoProgress,
+} from "@/lib/analytics/client-tracker";
 
 type WidgetMediaPlayerProps = {
   media: PublicTestimonialMedia;
   allowPlayback?: boolean;
   aspectRatio?: "video" | "square" | "wide" | "auto";
   className?: string;
+  workspaceId?: string;
+  widgetId?: string;
+  testimonialId?: string;
 };
 
 export function WidgetMediaPlayer({
@@ -26,6 +33,9 @@ export function WidgetMediaPlayer({
   allowPlayback = true,
   aspectRatio = "wide",
   className = "",
+  workspaceId,
+  widgetId = "widget-media",
+  testimonialId,
 }: WidgetMediaPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -35,6 +45,26 @@ export function WidgetMediaPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(media.durationSeconds || 0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+
+  const hasTrackedPlayRef = useRef(false);
+  const accumulatedWatchRef = useRef(0);
+  const lastTimeRef = useRef(0);
+
+  // Flush watch progress on unmount
+  useEffect(() => {
+    return () => {
+      if (accumulatedWatchRef.current > 0.5 && testimonialId) {
+        trackVideoProgress(
+          workspaceId,
+          widgetId,
+          testimonialId,
+          accumulatedWatchRef.current,
+          duration,
+          false
+        );
+      }
+    };
+  }, [workspaceId, widgetId, testimonialId, duration]);
 
   const isVideo = media.type === "VIDEO";
   const isImage = media.type === "IMAGE";
@@ -132,11 +162,34 @@ export function WidgetMediaPlayer({
               onPlaying={() => {
                 setIsLoading(false);
                 setIsPlaying(true);
+                if (!hasTrackedPlayRef.current && testimonialId) {
+                  hasTrackedPlayRef.current = true;
+                  trackVideoPlay(workspaceId, widgetId, testimonialId, duration);
+                }
+                lastTimeRef.current = videoRef.current?.currentTime || 0;
               }}
-              onPause={() => setIsPlaying(false)}
+              onPause={() => {
+                setIsPlaying(false);
+                if (accumulatedWatchRef.current > 0.5 && testimonialId) {
+                  trackVideoProgress(
+                    workspaceId,
+                    widgetId,
+                    testimonialId,
+                    accumulatedWatchRef.current,
+                    duration,
+                    false
+                  );
+                }
+              }}
               onTimeUpdate={() => {
                 if (videoRef.current) {
-                  setCurrentTime(videoRef.current.currentTime);
+                  const cur = videoRef.current.currentTime;
+                  const delta = cur - lastTimeRef.current;
+                  if (delta > 0 && delta < 2) {
+                    accumulatedWatchRef.current += delta;
+                  }
+                  lastTimeRef.current = cur;
+                  setCurrentTime(cur);
                   if (!duration && videoRef.current.duration) {
                     setDuration(videoRef.current.duration);
                   }
@@ -145,6 +198,16 @@ export function WidgetMediaPlayer({
               onEnded={() => {
                 setIsPlaying(false);
                 setCurrentTime(0);
+                if (testimonialId) {
+                  trackVideoProgress(
+                    workspaceId,
+                    widgetId,
+                    testimonialId,
+                    accumulatedWatchRef.current,
+                    duration,
+                    true
+                  );
+                }
               }}
               onError={() => {
                 setIsLoading(false);

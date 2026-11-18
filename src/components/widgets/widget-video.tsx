@@ -25,6 +25,11 @@ import {
   getCardRadiusClasses,
   getCardSpacingClasses,
 } from "@/lib/branding/utils";
+import {
+  trackVideoPlay,
+  trackVideoProgress,
+  trackTestimonialInteraction,
+} from "@/lib/analytics/client-tracker";
 
 type WidgetVideoProps = {
   testimonials: PublicTestimonialCard[];
@@ -68,6 +73,28 @@ function VideoPlayerCard({
   const [hasError, setHasError] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+
+  // Analytics tracking refs
+  const hasTrackedPlayRef = useRef(false);
+  const accumulatedWatchRef = useRef(0);
+  const lastTimeRef = useRef(0);
+  const widgetId = config.widgetId || config.slug || "widget-video";
+
+  // Flush watch progress on unmount if any watch time occurred
+  useEffect(() => {
+    return () => {
+      if (accumulatedWatchRef.current > 0.5) {
+        trackVideoProgress(
+          config.workspaceId,
+          widgetId,
+          testimonial.id,
+          accumulatedWatchRef.current,
+          duration,
+          false
+        );
+      }
+    };
+  }, [config.workspaceId, widgetId, testimonial.id, duration]);
 
   // Find video media asset
   const videoMedia: PublicTestimonialMedia | undefined = testimonial.media?.find(
@@ -165,7 +192,10 @@ function VideoPlayerCard({
     <article
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onClick={() => onTestimonialClick?.(testimonial)}
+      onClick={() => {
+        trackTestimonialInteraction(config.workspaceId, widgetId, testimonial.id, "click");
+        onTestimonialClick?.(testimonial);
+      }}
       aria-label={`Video testimonial from ${testimonial.customer?.name || "Customer"}`}
       className={`flex flex-col ${radiusClass} ${borderClass} bg-white dark:bg-zinc-900 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md focus:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 ${
         onTestimonialClick ? "cursor-pointer" : ""
@@ -189,16 +219,47 @@ function VideoPlayerCard({
               onPlaying={() => {
                 setIsLoading(false);
                 setIsPlaying(true);
+                if (!hasTrackedPlayRef.current) {
+                  hasTrackedPlayRef.current = true;
+                  trackVideoPlay(config.workspaceId, widgetId, testimonial.id, duration);
+                }
+                lastTimeRef.current = videoRef.current?.currentTime || 0;
               }}
-              onPause={() => setIsPlaying(false)}
+              onPause={() => {
+                setIsPlaying(false);
+                if (accumulatedWatchRef.current > 0.5) {
+                  trackVideoProgress(
+                    config.workspaceId,
+                    widgetId,
+                    testimonial.id,
+                    accumulatedWatchRef.current,
+                    duration,
+                    false
+                  );
+                }
+              }}
               onTimeUpdate={() => {
                 if (videoRef.current) {
-                  setCurrentTime(videoRef.current.currentTime);
+                  const cur = videoRef.current.currentTime;
+                  const delta = cur - lastTimeRef.current;
+                  if (delta > 0 && delta < 2) {
+                    accumulatedWatchRef.current += delta;
+                  }
+                  lastTimeRef.current = cur;
+                  setCurrentTime(cur);
                 }
               }}
               onEnded={() => {
                 setIsPlaying(false);
                 setCurrentTime(0);
+                trackVideoProgress(
+                  config.workspaceId,
+                  widgetId,
+                  testimonial.id,
+                  accumulatedWatchRef.current,
+                  duration,
+                  true
+                );
               }}
               onError={() => {
                 setIsLoading(false);

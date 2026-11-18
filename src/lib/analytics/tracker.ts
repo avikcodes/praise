@@ -1,25 +1,49 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import { prisma } from "@/lib/db/client";
-import { parseWidgetConfig } from "@/lib/widgets/utils";
-import {
+import { prisma } from "../db/client.ts";
+import { parseWidgetConfig } from "../widgets/utils.ts";
+import type {
   AnalyticsDailyTrend,
   AnalyticsPeriod,
   AnalyticsResponse,
   FormPerformanceItem,
+  VideoByProjectPerformanceItem,
+  VideoByWidgetPerformanceItem,
+  VideoPerformanceItem,
+  WidgetByProjectItem,
   WidgetPerformanceItem,
-} from "./types";
+} from "./types.ts";
+import { METRIC_DEFINITIONS } from "./types.ts";
 import { Prisma, WidgetEventType } from "@prisma/client";
+
+export type AnalyticsEventType =
+  | "IMPRESSION"
+  | "VIEW"
+  | "INTERACTION"
+  | "CTA_CLICK"
+  | "TESTIMONIAL_CLICK"
+  | "VIDEO_PLAY"
+  | "VIDEO_PROGRESS"
+  | "VIDEO_COMPLETE";
 
 export type StoredEvent = {
   id: string;
   workspaceId: string;
-  targetType: "FORM" | "WIDGET";
+  targetType: "FORM" | "WIDGET" | "TESTIMONIAL" | "VIDEO";
   targetId: string;
-  eventType: "VIEW" | "INTERACT" | "VIDEO_PLAY";
+  testimonialId?: string | null;
+  eventType: AnalyticsEventType;
   recordedAt: string; // ISO date
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    watchDurationSeconds?: number;
+    videoDurationSeconds?: number;
+    completed?: boolean;
+    ctaUrl?: string;
+    ctaText?: string;
+    target?: string;
+    [key: string]: unknown;
+  };
 };
 
 // In-memory sliding window for deduplication (hash -> timestamp)
@@ -38,7 +62,7 @@ if (typeof setInterval !== "undefined") {
   }, 10 * 60 * 1000).unref?.();
 }
 
-// In-memory events cache backed by file persistence
+// In-memory events cache backed by file persistence for self-hosted resilience
 let memoryEvents: StoredEvent[] = [];
 let isLoaded = false;
 const DATA_DIR = path.resolve(process.cwd(), "data", "analytics");
@@ -74,10 +98,56 @@ function scheduleSave(): void {
 }
 
 /**
+ * Filter bot-like and crawler requests.
+ * Uses standard User-Agent inspection without collecting personal data.
+ */
+export function isBotUserAgent(userAgent?: string): boolean {
+  if (!userAgent || userAgent.trim().length === 0) return false; // Don't block requests with missing UA by default
+  const lower = userAgent.toLowerCase();
+  const botPatterns = [
+    "googlebot",
+    "bingbot",
+    "yandexbot",
+    "baiduspider",
+    "duckduckbot",
+    "slurp",
+    "twitterbot",
+    "facebookexternalhit",
+    "linkedinbot",
+    "embedly",
+    "quora link preview",
+    "showyoubot",
+    "outbrain",
+    "pinterest",
+    "slackbot",
+    "vkshare",
+    "w3c_validator",
+    "curl",
+    "wget",
+    "python-requests",
+    "aiohttp",
+    "httpx",
+    "headlesschrome",
+    "puppeteer",
+    "playwright",
+    "selenium",
+    "phantomjs",
+    "lighthouse",
+    "postmanruntime",
+  ];
+  return botPatterns.some((pattern) => lower.includes(pattern));
+}
+
+/**
  * Privacy-conscious visitor deduplication check.
  * Creates a one-way ephemeral hash that never stores the raw IP or user-agent.
  */
-function isRecentVisitor(clientIp: string, userAgent: string, targetId: string, eventType: string): boolean {
+function isRecentVisitor(
+  clientIp: string,
+  userAgent: string,
+  targetId: string,
+  eventType: string
+): boolean {
   const today = new Date().toISOString().slice(0, 10);
   const hash = crypto
     .createHash("sha256")
@@ -96,28 +166,68 @@ function isRecentVisitor(clientIp: string, userAgent: string, targetId: string, 
 }
 
 /**
+ * Maps incoming event strings to canonical Prisma WidgetEventType enum.
+ */
+function mapToPrismaEventType(eventType: AnalyticsEventType): WidgetEventType {
+  switch (eventType) {
+    case "IMPRESSION":
+      return WidgetEventType.IMPRESSION;
+    case "VIEW":
+      return WidgetEventType.VIEW;
+    case "CTA_CLICK":
+      return WidgetEventType.CTA_CLICK;
+    case "TESTIMONIAL_CLICK":
+      return WidgetEventType.TESTIMONIAL_CLICK;
+    case "VIDEO_PLAY":
+      return WidgetEventType.VIDEO_PLAY;
+    case "VIDEO_PROGRESS":
+      return WidgetEventType.VIDEO_PROGRESS;
+    case "VIDEO_COMPLETE":
+      return WidgetEventType.VIDEO_COMPLETE;
+    case "INTERACTION":
+    default:
+      return WidgetEventType.INTERACTION;
+  }
+}
+
+/**
  * Records a privacy-conscious analytics event.
  */
 export async function recordAnalyticsEvent({
   workspaceId,
   targetType,
   targetId,
+  testimonialId,
   eventType,
   clientIp = "127.0.0.1",
   userAgent = "",
   metadata,
 }: {
   workspaceId: string;
-  targetType: "FORM" | "WIDGET";
+  targetType: "FORM" | "WIDGET" | "TESTIMONIAL" | "VIDEO";
   targetId: string;
-  eventType: "VIEW" | "INTERACT" | "VIDEO_PLAY";
+  testimonialId?: string | null;
+  eventType: AnalyticsEventType;
   clientIp?: string;
   userAgent?: string;
   metadata?: Record<string, unknown>;
 }): Promise<{ recorded: boolean; reason?: string }> {
-  // 1. Deduplication check for VIEW events
-  if (eventType === "VIEW" && isRecentVisitor(clientIp, userAgent, targetId, eventType)) {
+  // 1. Bot & Crawler Filtering
+  if (isBotUserAgent(userAgent)) {
+    return { recorded: false, reason: "bot_filtered" };
+  }
+
+  // 2. Deduplication check for VIEW & IMPRESSION events
+  if ((eventType === "VIEW" || eventType === "IMPRESSION") && isRecentVisitor(clientIp, userAgent, targetId, eventType)) {
     return { recorded: false, reason: "deduplicated_recent_visitor" };
+  }
+
+  // 3. Invalid Event Validation (e.g. video watch time sanity check)
+  if (metadata?.watchDurationSeconds !== undefined) {
+    const secs = Number(metadata.watchDurationSeconds);
+    if (isNaN(secs) || secs < 0 || secs > 7200) {
+      return { recorded: false, reason: "invalid_duration_range" };
+    }
   }
 
   await ensureLoaded();
@@ -127,6 +237,7 @@ export async function recordAnalyticsEvent({
     workspaceId,
     targetType,
     targetId,
+    testimonialId: testimonialId || null,
     eventType,
     recordedAt: new Date().toISOString(),
     metadata,
@@ -135,25 +246,21 @@ export async function recordAnalyticsEvent({
   memoryEvents.push(newEvent);
   scheduleSave();
 
-  // 2. Also record to Prisma WidgetEvent table if widget target and DB available
+  // 4. Also record to Prisma WidgetEvent table if target is a widget
   if (targetType === "WIDGET" && !targetId.startsWith("proj-")) {
     try {
-      const pEventType =
-        eventType === "INTERACT"
-          ? WidgetEventType.INTERACTION
-          : eventType === "VIDEO_PLAY"
-          ? WidgetEventType.VIDEO_PLAY
-          : WidgetEventType.IMPRESSION;
-
+      const pEventType = mapToPrismaEventType(eventType);
       await prisma.widgetEvent.create({
         data: {
           workspaceId,
           widgetId: targetId,
+          testimonialId: testimonialId || null,
           eventType: pEventType,
+          metadataJson: metadata ? JSON.stringify(metadata) : null,
         },
       });
     } catch {
-      // Ignore DB error if database is offline or sqlite/dev
+      // Ignore DB error if database is offline or sqlite fallback
     }
   }
 
@@ -161,14 +268,30 @@ export async function recordAnalyticsEvent({
 }
 
 /**
- * Calculates start and end Date objects for an analytics period.
+ * Calculates start and end Date objects for an analytics period or custom date range.
  */
-export function getPeriodDateRange(period: AnalyticsPeriod): { start: Date; end: Date; days: number } {
+export function getPeriodDateRange(
+  period: AnalyticsPeriod,
+  customStart?: string | null,
+  customEnd?: string | null
+): { start: Date; end: Date; days: number } {
   const end = new Date();
   end.setHours(23, 59, 59, 999);
 
   const start = new Date();
   start.setHours(0, 0, 0, 0);
+
+  if (period === "custom" && customStart && customEnd) {
+    const s = new Date(customStart);
+    s.setHours(0, 0, 0, 0);
+    const e = new Date(customEnd);
+    e.setHours(23, 59, 59, 999);
+
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime()) && s <= e) {
+      const diffDays = Math.max(1, Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)));
+      return { start: s, end: e, days: diffDays };
+    }
+  }
 
   let days = 30;
   if (period === "7d") {
@@ -190,18 +313,23 @@ export function getPeriodDateRange(period: AnalyticsPeriod): { start: Date; end:
 }
 
 /**
- * Queries and calculates workspace analytics scoped to the date range.
+ * Queries and calculates workspace analytics scoped to the date range, widget, media, and project.
  */
 export async function getWorkspaceAnalytics({
   workspaceId,
   period = "30d",
   projectId,
+  startDate,
+  endDate,
 }: {
   workspaceId: string;
   period?: AnalyticsPeriod;
   projectId?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
 }): Promise<AnalyticsResponse> {
-  const { start, end, days } = getPeriodDateRange(period);
+  const effectivePeriod = startDate && endDate ? "custom" : period;
+  const { start, end, days } = getPeriodDateRange(effectivePeriod, startDate, endDate);
   await ensureLoaded();
 
   // 1. Query actual Testimonials within workspace and date range
@@ -213,7 +341,7 @@ export async function getWorkspaceAnalytics({
     testimonialWhere.projectId = projectId;
   }
 
-  if (period !== "all") {
+  if (effectivePeriod !== "all") {
     testimonialWhere.submittedAt = {
       gte: start,
       lte: end,
@@ -228,6 +356,8 @@ export async function getWorkspaceAnalytics({
     submittedAt: Date;
     formId: string | null;
     projectId: string | null;
+    customer?: { name: string; company?: string | null; avatarUrl?: string | null } | null;
+    mediaAssets?: Array<{ id: string; type: string; durationSeconds?: number | null }>;
   }> = [];
 
   try {
@@ -241,10 +371,43 @@ export async function getWorkspaceAnalytics({
         submittedAt: true,
         formId: true,
         projectId: true,
+        customer: { select: { name: true, company: true, avatarUrl: true } },
+        mediaAssets: { select: { id: true, type: true, durationSeconds: true } },
       },
     });
   } catch {
     // Graceful fallback when DB is offline
+  }
+
+  // Also query all video testimonials in workspace to populate video report even if submitted earlier
+  let allVideoTestimonials: Array<{
+    id: string;
+    projectId: string | null;
+    customer?: { name: string; company?: string | null; avatarUrl?: string | null } | null;
+    mediaAssets?: Array<{ id: string; type: string; durationSeconds?: number | null }>;
+    project?: { name: string } | null;
+  }> = [];
+
+  try {
+    const vWhere: Prisma.TestimonialWhereInput = {
+      workspaceId,
+      status: "APPROVED",
+      type: "VIDEO",
+    };
+    if (projectId) vWhere.projectId = projectId;
+
+    allVideoTestimonials = await prisma.testimonial.findMany({
+      where: vWhere,
+      select: {
+        id: true,
+        projectId: true,
+        customer: { select: { name: true, company: true, avatarUrl: true } },
+        mediaAssets: { select: { id: true, type: true, durationSeconds: true } },
+        project: { select: { name: true } },
+      },
+    });
+  } catch {
+    // Graceful fallback
   }
 
   // 2. Query workspace forms
@@ -305,19 +468,83 @@ export async function getWorkspaceAnalytics({
     // Graceful fallback
   }
 
-  // 4. Filter stored events within date range and workspace
+  // 4. Query workspace projects for project breakdowns
+  let projects: Array<{ id: string; name: string }> = [];
+  try {
+    projects = await prisma.project.findMany({
+      where: { workspaceId },
+      select: { id: true, name: true },
+    });
+  } catch {
+    // Graceful fallback
+  }
+
+  const projectMap = new Map<string, string>();
+  for (const p of projects) {
+    projectMap.set(p.id, p.name);
+  }
+
+  // 5. Query and unify events from both Prisma DB and memory/file storage
   const startIso = start.toISOString();
   const endIso = end.toISOString();
 
-  const relevantEvents = memoryEvents.filter((ev) => {
-    if (ev.workspaceId !== workspaceId) return false;
-    if (period !== "all") {
-      if (ev.recordedAt < startIso || ev.recordedAt > endIso) return false;
-    }
-    return true;
-  });
+  // Combine memory events and DB events, deduplicating by ID
+  const eventMap = new Map<string, StoredEvent>();
 
-  // Calculate summary counts from actual data
+  // A. Load from memoryEvents
+  for (const ev of memoryEvents) {
+    if (ev.workspaceId !== workspaceId) continue;
+    if (effectivePeriod !== "all") {
+      if (ev.recordedAt < startIso || ev.recordedAt > endIso) continue;
+    }
+    eventMap.set(ev.id, ev);
+  }
+
+  // B. Load from Prisma WidgetEvent if available
+  try {
+    const dbEvents = await prisma.widgetEvent.findMany({
+      where: {
+        workspaceId,
+        ...(effectivePeriod !== "all" ? { recordedAt: { gte: start, lte: end } } : {}),
+      },
+      select: {
+        id: true,
+        widgetId: true,
+        testimonialId: true,
+        eventType: true,
+        metadataJson: true,
+        recordedAt: true,
+      },
+    });
+
+    for (const dbev of dbEvents) {
+      if (!eventMap.has(dbev.id)) {
+        let meta: Record<string, unknown> | undefined = undefined;
+        if (dbev.metadataJson) {
+          try {
+            meta = JSON.parse(dbev.metadataJson);
+          } catch {}
+        }
+
+        eventMap.set(dbev.id, {
+          id: dbev.id,
+          workspaceId,
+          targetType: "WIDGET",
+          targetId: dbev.widgetId,
+          testimonialId: dbev.testimonialId,
+          eventType: dbev.eventType as AnalyticsEventType,
+          recordedAt: dbev.recordedAt.toISOString(),
+          metadata: meta,
+        });
+      }
+    }
+  } catch {
+    // Fallback to memory events
+  }
+
+  const relevantEvents = Array.from(eventMap.values());
+
+  // 6. Calculate Testimonial & Form Submissions summary
   let pendingCount = 0;
   let approvedCount = 0;
   let rejectedCount = 0;
@@ -357,14 +584,32 @@ export async function getWorkspaceAnalytics({
   const averageRating =
     ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : null;
 
-  // Aggregate event metrics
+  // 7. Aggregate Widget & Video Metrics
   let formViewsCount = 0;
-  let widgetViewsCount = 0;
-  let widgetClicksCount = 0;
+  let totalImpressions = 0;
+  let totalViews = 0;
+  let totalCtaClicks = 0;
+  let totalInteractions = 0;
+
+  let totalVideoPlays = 0;
+  let totalPlaybackDurationSeconds = 0;
+  let completedVideoPlays = 0;
 
   const formViewsMap = new Map<string, number>();
+
+  // Maps for widget breakdowns
+  const widgetImpressionsMap = new Map<string, number>();
   const widgetViewsMap = new Map<string, number>();
-  const widgetClicksMap = new Map<string, number>();
+  const widgetCtaClicksMap = new Map<string, number>();
+  const widgetInteractionsMap = new Map<string, number>();
+  const widgetVideoPlaysMap = new Map<string, number>();
+  const widgetVideoDurationMap = new Map<string, number>();
+  const widgetVideoCompletionsMap = new Map<string, number>();
+
+  // Maps for video breakdowns (by testimonialId)
+  const videoPlaysMap = new Map<string, number>();
+  const videoDurationMap = new Map<string, number>();
+  const videoCompletionsMap = new Map<string, number>();
 
   for (const ev of relevantEvents) {
     if (ev.targetType === "FORM") {
@@ -372,43 +617,90 @@ export async function getWorkspaceAnalytics({
         formViewsCount++;
         formViewsMap.set(ev.targetId, (formViewsMap.get(ev.targetId) || 0) + 1);
       }
-    } else if (ev.targetType === "WIDGET") {
-      if (ev.eventType === "VIEW") {
-        widgetViewsCount++;
-        widgetViewsMap.set(ev.targetId, (widgetViewsMap.get(ev.targetId) || 0) + 1);
-      } else if (ev.eventType === "INTERACT" || ev.eventType === "VIDEO_PLAY") {
-        widgetClicksCount++;
-        widgetClicksMap.set(ev.targetId, (widgetClicksMap.get(ev.targetId) || 0) + 1);
+    } else if (ev.targetType === "WIDGET" || ev.targetType === "VIDEO" || ev.targetType === "TESTIMONIAL") {
+      const wId = ev.targetId;
+
+      // Widget Impression
+      if (ev.eventType === "IMPRESSION") {
+        totalImpressions++;
+        widgetImpressionsMap.set(wId, (widgetImpressionsMap.get(wId) || 0) + 1);
+      }
+      // Widget View (Viewable Impression)
+      else if (ev.eventType === "VIEW") {
+        totalViews++;
+        widgetViewsMap.set(wId, (widgetViewsMap.get(wId) || 0) + 1);
+      }
+      // CTA Click
+      else if (ev.eventType === "CTA_CLICK") {
+        totalCtaClicks++;
+        widgetCtaClicksMap.set(wId, (widgetCtaClicksMap.get(wId) || 0) + 1);
+      }
+      // Testimonial Click / Interaction
+      else if (ev.eventType === "TESTIMONIAL_CLICK" || ev.eventType === "INTERACTION") {
+        totalInteractions++;
+        widgetInteractionsMap.set(wId, (widgetInteractionsMap.get(wId) || 0) + 1);
+      }
+      // Video Play
+      else if (ev.eventType === "VIDEO_PLAY") {
+        totalVideoPlays++;
+        widgetVideoPlaysMap.set(wId, (widgetVideoPlaysMap.get(wId) || 0) + 1);
+
+        const tId = ev.testimonialId || (ev.metadata?.testimonialId as string | undefined);
+        if (tId) {
+          videoPlaysMap.set(tId, (videoPlaysMap.get(tId) || 0) + 1);
+        }
+      }
+      // Video Progress & Watch Duration
+      else if (ev.eventType === "VIDEO_PROGRESS") {
+        const watchSecs = Number(ev.metadata?.watchDurationSeconds || 0);
+        if (watchSecs > 0) {
+          totalPlaybackDurationSeconds += watchSecs;
+          widgetVideoDurationMap.set(wId, (widgetVideoDurationMap.get(wId) || 0) + watchSecs);
+
+          const tId = ev.testimonialId || (ev.metadata?.testimonialId as string | undefined);
+          if (tId) {
+            videoDurationMap.set(tId, (videoDurationMap.get(tId) || 0) + watchSecs);
+          }
+        }
+        if (ev.metadata?.completed) {
+          completedVideoPlays++;
+          widgetVideoCompletionsMap.set(wId, (widgetVideoCompletionsMap.get(wId) || 0) + 1);
+
+          const tId = ev.testimonialId || (ev.metadata?.testimonialId as string | undefined);
+          if (tId) {
+            videoCompletionsMap.set(tId, (videoCompletionsMap.get(tId) || 0) + 1);
+          }
+        }
+      }
+      // Video Complete
+      else if (ev.eventType === "VIDEO_COMPLETE") {
+        completedVideoPlays++;
+        widgetVideoCompletionsMap.set(wId, (widgetVideoCompletionsMap.get(wId) || 0) + 1);
+
+        const tId = ev.testimonialId || (ev.metadata?.testimonialId as string | undefined);
+        if (tId) {
+          videoCompletionsMap.set(tId, (videoCompletionsMap.get(tId) || 0) + 1);
+        }
       }
     }
   }
 
-  // Also query prisma.widgetEvent if available
-  try {
-    const prismaWidgetEvents = await prisma.widgetEvent.findMany({
-      where: {
-        workspaceId,
-        ...(period !== "all" ? { recordedAt: { gte: start, lte: end } } : {}),
-      },
-      select: {
-        widgetId: true,
-        eventType: true,
-        recordedAt: true,
-      },
-    });
-
-    for (const wev of prismaWidgetEvents) {
-      if (wev.eventType === "IMPRESSION") {
-        widgetViewsMap.set(wev.widgetId, (widgetViewsMap.get(wev.widgetId) || 0) + 1);
-        widgetViewsCount++;
-      } else {
-        widgetClicksMap.set(wev.widgetId, (widgetClicksMap.get(wev.widgetId) || 0) + 1);
-        widgetClicksCount++;
-      }
-    }
-  } catch {
-    // Ignore if table not queried
+  // Ensure impressions is at least as large as views
+  if (totalImpressions < totalViews) {
+    totalImpressions = totalViews;
   }
+
+  const widgetViewRate =
+    totalImpressions > 0 ? Math.round((totalViews / totalImpressions) * 1000) / 10 : 0;
+  const widgetCtaRate =
+    totalViews > 0 ? Math.round((totalCtaClicks / totalViews) * 1000) / 10 : 0;
+  const widgetInteractionRate =
+    totalViews > 0 ? Math.round((totalInteractions / totalViews) * 1000) / 10 : 0;
+
+  const averageWatchTimeSeconds =
+    totalVideoPlays > 0 ? Math.round(totalPlaybackDurationSeconds / totalVideoPlays) : 0;
+  const videoCompletionRate =
+    totalVideoPlays > 0 ? Math.round((completedVideoPlays / totalVideoPlays) * 1000) / 10 : 0;
 
   const formSubmissionRate =
     formViewsCount > 0
@@ -417,14 +709,9 @@ export async function getWorkspaceAnalytics({
       ? 100
       : 0;
 
-  const widgetEngagementRate =
-    widgetViewsCount > 0
-      ? Math.round((widgetClicksCount / widgetViewsCount) * 1000) / 10
-      : 0;
-
-  // 5. Daily Trend Buckets (Group by calendar day)
+  // 8. Daily Trend Buckets (Group by calendar day)
   const bucketMap = new Map<string, AnalyticsDailyTrend>();
-  const bucketDays = period === "all" ? Math.min(days, 30) : days;
+  const bucketDays = effectivePeriod === "all" ? Math.min(days, 30) : days;
   const dayStep = new Date(start);
 
   for (let i = 0; i < bucketDays; i++) {
@@ -438,8 +725,13 @@ export async function getWorkspaceAnalytics({
       pending: 0,
       rejected: 0,
       formViews: 0,
+      widgetImpressions: 0,
       widgetViews: 0,
-      widgetClicks: 0,
+      widgetCtaClicks: 0,
+      widgetInteractions: 0,
+      videoPlays: 0,
+      videoWatchTimeSeconds: 0,
+      videoCompletions: 0,
     });
     dayStep.setDate(dayStep.getDate() + 1);
   }
@@ -461,16 +753,28 @@ export async function getWorkspaceAnalytics({
     if (bucket) {
       if (ev.targetType === "FORM" && ev.eventType === "VIEW") {
         bucket.formViews++;
-      } else if (ev.targetType === "WIDGET") {
-        if (ev.eventType === "VIEW") bucket.widgetViews++;
-        else bucket.widgetClicks++;
+      } else if (ev.targetType === "WIDGET" || ev.targetType === "VIDEO" || ev.targetType === "TESTIMONIAL") {
+        if (ev.eventType === "IMPRESSION") bucket.widgetImpressions++;
+        else if (ev.eventType === "VIEW") bucket.widgetViews++;
+        else if (ev.eventType === "CTA_CLICK") bucket.widgetCtaClicks++;
+        else if (ev.eventType === "TESTIMONIAL_CLICK" || ev.eventType === "INTERACTION") {
+          bucket.widgetInteractions++;
+        } else if (ev.eventType === "VIDEO_PLAY") {
+          bucket.videoPlays++;
+        } else if (ev.eventType === "VIDEO_PROGRESS") {
+          const watch = Number(ev.metadata?.watchDurationSeconds || 0);
+          bucket.videoWatchTimeSeconds += watch;
+          if (ev.metadata?.completed) bucket.videoCompletions++;
+        } else if (ev.eventType === "VIDEO_COMPLETE") {
+          bucket.videoCompletions++;
+        }
       }
     }
   }
 
   const dailyTrends = Array.from(bucketMap.values());
 
-  // 6. Form Performance Table Rows
+  // 9. Form Performance Rows
   const formPerformance: FormPerformanceItem[] = forms.map((f) => {
     const sub = formSubmissionsMap.get(f.id) || { total: 0, approved: 0 };
     const views = formViewsMap.get(f.id) || 0;
@@ -489,25 +793,28 @@ export async function getWorkspaceAnalytics({
       approvedCount: sub.approved,
     };
   });
-
-  // Sort forms by submissions desc, then views desc
   formPerformance.sort((a, b) => b.submissions - a.submissions || b.views - a.views);
 
-  // 7. Widget Performance Table Rows
+  // 10. Widget Performance Rows
   const widgetPerformance: WidgetPerformanceItem[] = widgets.map((w) => {
     let slug: string | null = null;
     if (w.configJson) {
       try {
         const parsed = parseWidgetConfig(w.configJson, w.name);
         slug = parsed.slug;
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
+    let impressions = widgetImpressionsMap.get(w.id) || 0;
     const views = widgetViewsMap.get(w.id) || 0;
-    const clicks = widgetClicksMap.get(w.id) || 0;
-    const rate = views > 0 ? Math.round((clicks / views) * 1000) / 10 : 0;
+    if (impressions < views) impressions = views;
+
+    const ctaClicks = widgetCtaClicksMap.get(w.id) || 0;
+    const interactions = widgetInteractionsMap.get(w.id) || 0;
+    const vPlays = widgetVideoPlaysMap.get(w.id) || 0;
+
+    const ctaRate = views > 0 ? Math.round((ctaClicks / views) * 1000) / 10 : 0;
+    const interactionRate = views > 0 ? Math.round((interactions / views) * 1000) / 10 : 0;
 
     return {
       id: w.id,
@@ -515,18 +822,131 @@ export async function getWorkspaceAnalytics({
       type: w.type,
       slug,
       projectId: w.projectId,
-      projectName: w.project?.name || null,
+      projectName: w.project?.name || (w.projectId ? projectMap.get(w.projectId) : null) || null,
+      impressions,
       views,
-      clicks,
-      engagementRate: rate,
+      ctaClicks,
+      interactions,
+      ctaRate,
+      interactionRate,
+      videoPlays: vPlays,
     };
   });
+  widgetPerformance.sort((a, b) => b.views - a.views || b.ctaClicks - a.ctaClicks);
 
-  // Sort widgets by views desc, then clicks desc
-  widgetPerformance.sort((a, b) => b.views - a.views || b.clicks - a.clicks);
+  // 11. Widget Performance Grouped by Project
+  const projectWidgetMap = new Map<string, WidgetByProjectItem>();
+  for (const wp of widgetPerformance) {
+    const pId = wp.projectId || "unassigned";
+    const pName = wp.projectName || "Unassigned / General";
+    const existing = projectWidgetMap.get(pId) || {
+      projectId: pId,
+      projectName: pName,
+      widgetCount: 0,
+      impressions: 0,
+      views: 0,
+      ctaClicks: 0,
+      interactions: 0,
+      ctaRate: 0,
+      interactionRate: 0,
+    };
+
+    existing.widgetCount += 1;
+    existing.impressions += wp.impressions;
+    existing.views += wp.views;
+    existing.ctaClicks += wp.ctaClicks;
+    existing.interactions += wp.interactions;
+    existing.ctaRate =
+      existing.views > 0 ? Math.round((existing.ctaClicks / existing.views) * 1000) / 10 : 0;
+    existing.interactionRate =
+      existing.views > 0 ? Math.round((existing.interactions / existing.views) * 1000) / 10 : 0;
+
+    projectWidgetMap.set(pId, existing);
+  }
+  const widgetByProject = Array.from(projectWidgetMap.values()).sort((a, b) => b.views - a.views);
+
+  // 12. Video Performance Rows (Individual Video Testimonials)
+  const videoPerformance: VideoPerformanceItem[] = allVideoTestimonials.map((v) => {
+    const plays = videoPlaysMap.get(v.id) || 0;
+    const totalWatchTime = videoDurationMap.get(v.id) || 0;
+    const completed = videoCompletionsMap.get(v.id) || 0;
+    const avgWatch = plays > 0 ? Math.round(totalWatchTime / plays) : 0;
+    const compRate = plays > 0 ? Math.round((completed / plays) * 1000) / 10 : 0;
+
+    const media = v.mediaAssets?.find((m) => m.type === "VIDEO");
+    const duration = media?.durationSeconds || 0;
+
+    return {
+      testimonialId: v.id,
+      customerName: v.customer?.name || "Customer Video",
+      customerCompany: v.customer?.company || null,
+      avatarUrl: v.customer?.avatarUrl || null,
+      videoDurationSeconds: duration,
+      projectId: v.projectId,
+      projectName: v.project?.name || (v.projectId ? projectMap.get(v.projectId) : null) || null,
+      plays,
+      totalWatchTimeSeconds: totalWatchTime,
+      averageWatchTimeSeconds: avgWatch,
+      completedPlays: completed,
+      completionRate: compRate,
+    };
+  });
+  videoPerformance.sort((a, b) => b.plays - a.plays || b.totalWatchTimeSeconds - a.totalWatchTimeSeconds);
+
+  // 13. Video Engagement Grouped by Widget
+  const videoByWidget: VideoByWidgetPerformanceItem[] = widgets
+    .map((w) => {
+      const plays = widgetVideoPlaysMap.get(w.id) || 0;
+      const totalWatch = widgetVideoDurationMap.get(w.id) || 0;
+      const completed = widgetVideoCompletionsMap.get(w.id) || 0;
+      const avgWatch = plays > 0 ? Math.round(totalWatch / plays) : 0;
+      const compRate = plays > 0 ? Math.round((completed / plays) * 1000) / 10 : 0;
+
+      return {
+        widgetId: w.id,
+        widgetName: w.name,
+        widgetType: w.type,
+        projectId: w.projectId,
+        projectName: w.project?.name || (w.projectId ? projectMap.get(w.projectId) : null) || null,
+        videoPlays: plays,
+        totalWatchTimeSeconds: totalWatch,
+        averageWatchTimeSeconds: avgWatch,
+        completionRate: compRate,
+      };
+    })
+    .filter((vw) => vw.videoPlays > 0 || vw.widgetType.toLowerCase().includes("video"))
+    .sort((a, b) => b.videoPlays - a.videoPlays || b.totalWatchTimeSeconds - a.totalWatchTimeSeconds);
+
+  // 14. Video Performance Grouped by Project
+  const projectVideoMap = new Map<string, VideoByProjectPerformanceItem>();
+  for (const vp of videoPerformance) {
+    const pId = vp.projectId || "unassigned";
+    const pName = vp.projectName || "Unassigned / General";
+    const existing = projectVideoMap.get(pId) || {
+      projectId: pId,
+      projectName: pName,
+      videoCount: 0,
+      videoPlays: 0,
+      totalWatchTimeSeconds: 0,
+      averageWatchTimeSeconds: 0,
+      completionRate: 0,
+    };
+
+    existing.videoCount += 1;
+    existing.videoPlays += vp.plays;
+    existing.totalWatchTimeSeconds += vp.totalWatchTimeSeconds;
+    const totalComps = (existing.completionRate / 100) * (existing.videoPlays - vp.plays) + vp.completedPlays;
+    existing.completionRate =
+      existing.videoPlays > 0 ? Math.round((totalComps / existing.videoPlays) * 1000) / 10 : 0;
+    existing.averageWatchTimeSeconds =
+      existing.videoPlays > 0 ? Math.round(existing.totalWatchTimeSeconds / existing.videoPlays) : 0;
+
+    projectVideoMap.set(pId, existing);
+  }
+  const videoByProject = Array.from(projectVideoMap.values()).sort((a, b) => b.videoPlays - a.videoPlays);
 
   return {
-    period,
+    period: effectivePeriod,
     dateRange: {
       start: start.toISOString(),
       end: end.toISOString(),
@@ -540,15 +960,33 @@ export async function getWorkspaceAnalytics({
       approvalRate,
       formViews: formViewsCount,
       formSubmissionRate,
-      widgetViews: widgetViewsCount,
-      widgetClicks: widgetClicksCount,
-      widgetEngagementRate,
+
+      // Widget metrics
+      widgetImpressions: totalImpressions,
+      widgetViews: totalViews,
+      widgetViewRate,
+      widgetCtaClicks: totalCtaClicks,
+      widgetCtaRate,
+      widgetInteractions: totalInteractions,
+      widgetInteractionRate,
+
+      // Video metrics
+      videoPlays: totalVideoPlays,
+      totalPlaybackDurationSeconds,
+      averageWatchTimeSeconds,
+      completedPlays: completedVideoPlays,
+      videoCompletionRate,
+
       averageRating,
       typeDistribution: typeCounts,
     },
     dailyTrends,
     formPerformance,
     widgetPerformance,
+    widgetByProject,
+    videoPerformance,
+    videoByWidget,
+    videoByProject,
+    metricDefinitions: METRIC_DEFINITIONS,
   };
 }
-

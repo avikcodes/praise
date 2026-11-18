@@ -477,6 +477,7 @@ export async function POST(request: Request) {
           type: type === "VIDEO" ? "VIDEO" : type === "AUDIO" ? "AUDIO" : "TEXT",
           status: "PENDING",
           isFeatured: false,
+          language: typeof body.language === "string" ? body.language.toLowerCase().trim() : (form.defaultLanguage || "en"),
           sourceType: "FORM",
           sourceUrl: typeof body.sourceUrl === "string" ? body.sourceUrl.trim() : null,
           recordingQuestionsJson:

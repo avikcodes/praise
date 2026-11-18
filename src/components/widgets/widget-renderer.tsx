@@ -1,8 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { WidgetDisplayType } from "@/types/widgets";
 import { WidgetRendererProps } from "./types";
+import {
+  trackWidgetImpression,
+  observeWidgetView,
+  trackWidgetCtaClick,
+} from "@/lib/analytics/client-tracker";
 import { WidgetGrid } from "./widget-grid";
 import { WidgetMasonry } from "./widget-masonry";
 import { WidgetCarousel } from "./widget-carousel";
@@ -126,6 +131,18 @@ export function WidgetRenderer({
   onTestimonialClick,
 }: WidgetRendererProps) {
   const normType = normalizeWidgetType(type);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetId = config.widgetId || config.slug;
+
+  // Track verified widget impressions & viewable dwells
+  useEffect(() => {
+    if (!widgetId) return;
+    trackWidgetImpression(config.workspaceId, widgetId);
+    const unobserve = observeWidgetView(containerRef.current, config.workspaceId, widgetId);
+    return () => {
+      unobserve();
+    };
+  }, [widgetId, config.workspaceId]);
 
   // 1. Strict Privacy & Moderation Gate:
   // Only display testimonials that are explicitly approved (if status field is present)
@@ -205,6 +222,7 @@ export function WidgetRenderer({
   // 5. Layout Dispatcher
   return (
     <div
+      ref={containerRef}
       style={customStyle}
       className={`w-full p-4 sm:p-6 transition-colors ${themeContainerClass} ${typographyClass} ${className}`}
     >
@@ -326,6 +344,29 @@ export function WidgetRenderer({
           config={config}
           onTestimonialClick={onTestimonialClick}
         />
+      )}
+
+      {/* Optional Widget CTA Button */}
+      {config.ctaEnabled && (
+        <div className="flex justify-center pt-4">
+          <a
+            href={config.ctaUrl || "#"}
+            onClick={() => {
+              if (widgetId) {
+                trackWidgetCtaClick(config.workspaceId, widgetId, config.ctaLabel, config.ctaUrl);
+              }
+            }}
+            target={config.ctaUrl?.startsWith("http") ? "_blank" : undefined}
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold shadow-2xs hover:shadow-md transition-all duration-200"
+            style={{
+              backgroundColor: config.primaryColor || config.accentColor || "#7049D8",
+              color: "#ffffff",
+            }}
+          >
+            <span>{config.ctaLabel || "Leave a Review"}</span>
+          </a>
+        </div>
       )}
 
       {/* Optional Praise Attribution (Fully removable when showPraiseBranding is false) */}

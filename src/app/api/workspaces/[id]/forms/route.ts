@@ -118,6 +118,7 @@ export async function POST(request: Request, context: RouteParams) {
       customCss,
       videoInstructions,
       recordingQuestionsJson,
+      defaultLanguage,
       fields,
     } = validated.data;
 
@@ -194,6 +195,7 @@ export async function POST(request: Request, context: RouteParams) {
           customCss: customCss || null,
           videoInstructions: videoInstructions || null,
           recordingQuestionsJson: recordingQuestionsJson || null,
+          defaultLanguage: defaultLanguage || "en",
           isPublished,
           fields: {
             create: fields.map((f, index) => ({

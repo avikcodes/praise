@@ -19,6 +19,8 @@ export const createWorkspaceSchema = z.object({
     .min(2, "Slug must be at least 2 characters")
     .regex(/^[a-z0-9-]+$/, "Slug may only contain lowercase letters, numbers, and hyphens")
     .trim(),
+  defaultLanguage: z.string().min(2).max(10).optional(),
+  supportedLanguagesJson: z.string().optional().nullable(),
 });
 
 export const createProjectSchema = z.object({
@@ -32,6 +34,7 @@ export const createProjectSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color code").optional(),
   logoUrl: z.string().max(2000).optional().nullable(),
   brandId: z.string().optional().nullable(),
+  defaultLanguage: z.string().min(2).max(10).optional().nullable(),
 });
 
 export const updateProjectSchema = z.object({
@@ -46,6 +49,7 @@ export const updateProjectSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Must be a valid hex color code").optional(),
   logoUrl: z.string().max(2000).optional().nullable(),
   brandId: z.string().optional().nullable(),
+  defaultLanguage: z.string().min(2).max(10).optional().nullable(),
 });
 
 export const createBrandSchema = z.object({
@@ -167,6 +171,7 @@ export const createFormSchema = z.object({
   customCss: z.string().optional().nullable(),
   videoInstructions: z.string().optional().nullable(),
   recordingQuestionsJson: z.string().optional().nullable(),
+  defaultLanguage: z.string().min(2).max(10).optional().default("en"),
   fields: z.array(formFieldSchema).optional().default([]),
 });
 

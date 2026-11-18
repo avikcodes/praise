@@ -15,6 +15,8 @@ export type WorkspaceItem = {
   name: string;
   slug: string;
   role: WorkspaceRole;
+  defaultLanguage?: string;
+  supportedLanguagesJson?: string | null;
   counts?: {
     projects: number;
     testimonials: number;
@@ -58,6 +60,7 @@ export type ProjectItem = {
   formsCount: number;
   widgetsCount: number;
   testimonialsCount: number;
+  defaultLanguage?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -74,7 +77,7 @@ type WorkspaceContextType = {
   ) => Promise<{ success: boolean; error?: string; workspace?: WorkspaceItem }>;
   updateWorkspace: (
     id: string,
-    data: { name?: string; slug?: string },
+    data: { name?: string; slug?: string; defaultLanguage?: string; supportedLanguagesJson?: string | null },
   ) => Promise<{ success: boolean; error?: string }>;
   deleteWorkspace: (
     id: string,
@@ -435,7 +438,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const updateWorkspace = async (
     id: string,
-    data: { name?: string; slug?: string },
+    data: { name?: string; slug?: string; defaultLanguage?: string; supportedLanguagesJson?: string | null },
   ) => {
     try {
       const res = await fetch(`/api/workspaces/${id}`, {

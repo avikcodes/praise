@@ -6,9 +6,12 @@ import { PraiseLogo } from "@/components/brand";
 import { CollectionFormDetail, FormFieldItem } from "@/types/form-builder";
 import { ROBOTS_DIRECTIVES, sanitizePublicSlug, toAbsoluteUrl } from "@/lib/seo/metadata";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
+import { DEFAULT_LANGUAGE, getLanguageConfig, isValidLanguageCode } from "@/lib/i18n/config";
+import { resolveLocalizedForm } from "@/lib/i18n/form-resolver";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ lang?: string; locale?: string }>;
 };
 
 // Fallback demo form when testing locally and database is empty/unseeded
@@ -74,38 +77,71 @@ const fallbackDevForm: CollectionFormDetail = {
   ],
 };
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const { lang, locale } = (await searchParams) || {};
+  const requestedLang = (lang || locale || "").toLowerCase().trim();
   const cleanSlug = sanitizePublicSlug(slug);
 
   try {
     const form = await prisma.collectionForm.findFirst({
       where: { slug: cleanSlug },
       include: {
-        project: { select: { name: true, logoUrl: true } },
+        project: { select: { name: true, logoUrl: true, defaultLanguage: true } },
+        translations: {
+          where: { isPublished: true },
+          select: { language: true, title: true, headerPrompt: true, description: true },
+        },
       },
     });
 
     if (form && form.isPublished) {
       const orgName = form.project?.name || SITE_NAME;
-      const title = `${form.title} — ${orgName} | ${SITE_NAME}`;
+      const baseLang = form.defaultLanguage || form.project?.defaultLanguage || DEFAULT_LANGUAGE;
+      
+      const matchingTranslation = requestedLang && requestedLang !== baseLang
+        ? form.translations.find((t) => t.language.toLowerCase() === requestedLang)
+        : null;
+
+      const activeLangCode = matchingTranslation ? requestedLang : baseLang;
+      const activeLangConfig = getLanguageConfig(activeLangCode);
+
+      const formTitle = matchingTranslation?.title || form.title;
+      const title = `${formTitle} — ${orgName} | ${SITE_NAME}`;
       const description =
+        matchingTranslation?.headerPrompt ||
+        matchingTranslation?.description ||
         form.headerPrompt ||
         form.description ||
         `Share your honest feedback and customer testimonial for ${orgName}.`;
-      const canonicalUrl = `${SITE_URL}/p/${cleanSlug}`;
+
+      const isDefaultLang = activeLangCode === baseLang;
+      const canonicalUrl = isDefaultLang
+        ? `${SITE_URL}/p/${cleanSlug}`
+        : `${SITE_URL}/p/${cleanSlug}?lang=${activeLangCode}`;
       const previewImageUrl = toAbsoluteUrl(form.customLogoUrl || form.project?.logoUrl);
+
+      // Construct alternate hreflang tags
+      const languageAlternates: Record<string, string> = {
+        [baseLang]: `${SITE_URL}/p/${cleanSlug}`,
+        "x-default": `${SITE_URL}/p/${cleanSlug}`,
+      };
+
+      for (const t of form.translations) {
+        languageAlternates[t.language] = `${SITE_URL}/p/${cleanSlug}?lang=${t.language}`;
+      }
 
       return {
         title,
         description,
         alternates: {
           canonical: canonicalUrl,
+          languages: languageAlternates,
         },
         robots: ROBOTS_DIRECTIVES.indexable,
         openGraph: {
           type: "website",
-          locale: "en_US",
+          locale: activeLangConfig.dateLocale.replace("-", "_"),
           siteName: SITE_NAME,
           url: canonicalUrl,
           title,
@@ -131,8 +167,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function PublicFormPage({ params }: PageProps) {
+export default async function PublicFormPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
+  const { lang, locale } = (await searchParams) || {};
+  const requestedLang = (lang || locale || "").toLowerCase().trim();
 
   let form: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
   try {
@@ -142,12 +180,16 @@ export default async function PublicFormPage({ params }: PageProps) {
         fields: {
           orderBy: { orderIndex: "asc" },
         },
+        translations: {
+          where: { isPublished: true },
+        },
         project: {
           select: {
             id: true,
             name: true,
             slug: true,
             color: true,
+            defaultLanguage: true,
           },
         },
         rewardProgram: {
@@ -169,7 +211,13 @@ export default async function PublicFormPage({ params }: PageProps) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       // In local dev without DB, render fallback test form so submission UI can be tested
-      return <PublicFormClient form={{ ...fallbackDevForm, slug }} />;
+      return (
+        <PublicFormClient
+          form={{ ...fallbackDevForm, slug }}
+          requestedLang={requestedLang}
+          initialTranslations={[]}
+        />
+      );
     }
     console.error("Failed to query public form:", error);
   }
@@ -178,7 +226,13 @@ export default async function PublicFormPage({ params }: PageProps) {
   if (!form) {
     if (process.env.NODE_ENV !== "production") {
       // Allow testing any slug in local development
-      return <PublicFormClient form={{ ...fallbackDevForm, slug }} />;
+      return (
+        <PublicFormClient
+          form={{ ...fallbackDevForm, slug }}
+          requestedLang={requestedLang}
+          initialTranslations={[]}
+        />
+      );
     }
 
     return (
@@ -278,5 +332,25 @@ export default async function PublicFormPage({ params }: PageProps) {
     ),
   };
 
-  return <PublicFormClient form={serializableForm} />;
+  const initialTranslations = (form.translations || []).map((t: any) => ({
+    id: t.id,
+    formId: t.formId,
+    language: t.language,
+    title: t.title,
+    description: t.description,
+    headerPrompt: t.headerPrompt,
+    thankYouMessage: t.thankYouMessage,
+    consentText: t.consentText,
+    videoInstructions: t.videoInstructions,
+    fieldTranslationsJson: t.fieldTranslationsJson,
+    isPublished: t.isPublished,
+  }));
+
+  return (
+    <PublicFormClient
+      form={serializableForm}
+      initialTranslations={initialTranslations}
+      requestedLang={requestedLang}
+    />
+  );
 }

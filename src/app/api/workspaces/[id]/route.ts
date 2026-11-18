@@ -58,7 +58,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       );
     }
 
-    const { name, slug } = validated.data;
+    const { name, slug, defaultLanguage, supportedLanguagesJson } = validated.data;
 
     // Check slug uniqueness if changed
     if (slug !== workspace.slug) {
@@ -76,6 +76,8 @@ export async function PUT(request: Request, { params }: RouteParams) {
       data: {
         name,
         slug,
+        ...(defaultLanguage !== undefined ? { defaultLanguage } : {}),
+        ...(supportedLanguagesJson !== undefined ? { supportedLanguagesJson } : {}),
       },
     });
 

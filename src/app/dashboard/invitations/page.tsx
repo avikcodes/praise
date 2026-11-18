@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback } from "react";
+import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
@@ -38,6 +39,7 @@ import {
   Smartphone,
   Sparkles,
   Trash2,
+  TrendingUp,
   UserCheck,
   UserPlus,
   Users,
@@ -938,25 +940,34 @@ export default function InvitationsPage() {
         title="Customer Invitations & Sequences"
         description="Invite customers to share reviews via Email or SMS with personalized links and automated delivery."
         actions={
-          channelTab === "email" ? (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={fetchCampaigns}
-                disabled={isLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
-              >
-                <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
-                <span>Refresh</span>
-              </button>
-              <button
-                onClick={handleOpenComposer}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-600 transition-colors"
-              >
-                <Plus size={14} />
-                <span>Create Campaign</span>
-              </button>
-            </div>
-          ) : null
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/analytics?tab=campaigns"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
+            >
+              <TrendingUp size={13} className="text-brand-600" />
+              <span>Campaign Analytics</span>
+            </Link>
+            {channelTab === "email" && (
+              <>
+                <button
+                  onClick={fetchCampaigns}
+                  disabled={isLoading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink-700 shadow-2xs hover:bg-warm-100 transition-colors"
+                >
+                  <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
+                  <span>Refresh</span>
+                </button>
+                <button
+                  onClick={handleOpenComposer}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-brand-600 transition-colors"
+                >
+                  <Plus size={14} />
+                  <span>Create Campaign</span>
+                </button>
+              </>
+            )}
+          </div>
         }
       />
 

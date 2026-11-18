@@ -63,7 +63,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    const { name, slug, description, color, logoUrl, brandId } = validated.data;
+    const { name, slug, description, color, logoUrl, brandId, defaultLanguage } = validated.data;
 
     // Check slug uniqueness if changed
     if (slug && slug !== project.slug) {
@@ -105,6 +105,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
         ...(color ? { color } : {}),
         ...(logoUrl !== undefined ? { logoUrl } : {}),
         ...(brandId !== undefined ? { brandId } : {}),
+        ...(defaultLanguage !== undefined ? { defaultLanguage } : {}),
       },
       include: {
         brand: true,
